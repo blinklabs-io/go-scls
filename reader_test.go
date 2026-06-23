@@ -130,6 +130,48 @@ func TestReaderSkipsUnknownRecords(t *testing.T) {
 	}
 }
 
+// TestReaderSkipsTrailingRecordsAfterManifest covers the CIP-0165 canonical
+// layout, where optional META/INDEX/DIR records follow the MANIFEST. The
+// reader must skip them and still reach a clean EOF with the manifest parsed.
+func TestReaderSkipsTrailingRecordsAfterManifest(t *testing.T) {
+	var buf bytes.Buffer
+	buf.Write(writeTestFile(t)) // HDR, CHUNK*, MANIFEST
+	// append a META record after the manifest (CIP allows [META]* there)
+	if err := writeRecord(&buf, RecordTypeMeta, []byte{0xa0}); err != nil {
+		t.Fatal(err)
+	}
+	file := buf.Bytes() // capture before NewReader drains the buffer
+	r, err := NewReader(bytes.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := 0
+	for {
+		_, err := r.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		chunks++
+	}
+	if chunks != 3 {
+		t.Fatalf("chunks %d, want 3", chunks)
+	}
+	if r.Manifest() == nil {
+		t.Fatal("manifest not parsed")
+	}
+	if r.Skipped() != 1 {
+		t.Fatalf("skipped %d, want 1", r.Skipped())
+	}
+	// Verify drives the same reader, so a trailing skippable record must not
+	// break structural verification.
+	if _, err := Verify(bytes.NewReader(file), VerifyStructure); err != nil {
+		t.Fatalf("verify with trailing META: %v", err)
+	}
+}
+
 func TestReaderMissingManifest(t *testing.T) {
 	file := writeTestFile(t)
 	// truncate the manifest record off the end: find its offset by scanning
