@@ -3,14 +3,14 @@
 Companion to `AGENTS.md`; read that first. This file: Claude-specific facts
 and workflow rules.
 
-## Status snapshot (2026-06-12)
+## Status snapshot (2026-06-23)
 
 | Metric | Value |
 |--------|-------|
 | Format version | SCLS v1 (CIP-0165), RAW chunks only |
-| Test functions | 60+ (100% passing), 4 godoc examples, 3 benchmarks |
+| Test functions | 62+ (100% passing), 4 godoc examples, 3 benchmarks |
 | Fuzz targets | 2 (`FuzzVerify`, `FuzzRoundTrip`) |
-| Conformance fixtures | 1 (Haskell-generated `minimal-raw.scls`, passes VerifyFull) |
+| Conformance fixtures | 5: Haskell-gen `minimal-raw.scls` + 4 Rust-gen (`empty`, `multi-ns`, `multi-chunk`, `multi-ns-multi-chunk`); all pass VerifyFull, roots/digests pinned in `TestConformanceGolden` |
 | Direct dependencies | `golang.org/x/crypto` only |
 | Go floor | 1.25 (CI matrix 1.25.x/1.26.x) |
 
