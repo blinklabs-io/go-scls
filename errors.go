@@ -36,4 +36,6 @@ var (
 	ErrMissingManifest        = errors.New("scls: missing MANIFEST record")
 	ErrInvalidManifest        = errors.New("scls: invalid MANIFEST record")
 	ErrUnexpectedRecord       = errors.New("scls: unexpected record after manifest")
+	ErrNotFound               = errors.New("scls: entry or namespace not found")
+	ErrProofMismatch          = errors.New("scls: proof does not verify against root")
 )
