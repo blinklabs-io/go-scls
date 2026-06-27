@@ -68,17 +68,18 @@ func LookupProof(r io.Reader, ns string, key []byte) (value []byte, proof Proof,
 		return nil, Proof{}, err
 	}
 	var (
-		cur       string
-		started   bool
-		curTree   MerkleTree
-		nsRoots   []Hash // per-namespace roots in file (lexicographic) order
-		nsNames   []string
-		tgtLeaves []Hash
-		tgtIdx    = -1
+		cur            string
+		started        bool
+		curTree        MerkleTree
+		namespaceRoots []namespaceRoot // per-namespace roots in file (lexicographic) order
+		tgtLeaves      []Hash
+		tgtIdx         = -1
 	)
 	finish := func() {
-		nsNames = append(nsNames, cur)
-		nsRoots = append(nsRoots, curTree.Root())
+		namespaceRoots = append(namespaceRoots, namespaceRoot{
+			name: cur,
+			root: curTree.Root(),
+		})
 	}
 	for {
 		c, e := sr.Next()
@@ -115,14 +116,22 @@ func LookupProof(r io.Reader, ns string, key []byte) (value []byte, proof Proof,
 	nsPath := provePath(tgtLeaves, tgtIdx)
 
 	// Global tree leaves in lexicographic namespace order.
-	gLeaves := make([]Hash, len(nsNames))
+	gLeaves := make([]Hash, len(namespaceRoots))
 	gi := -1
-	for i, name := range nsNames {
-		gLeaves[i] = NamespaceLeafDigest(nsRoots[i])
-		if name == ns {
+	for i, nsRoot := range namespaceRoots {
+		gLeaves[i] = NamespaceLeafDigest(nsRoot.root)
+		if nsRoot.name == ns {
 			gi = i
 		}
 	}
+	if gi < 0 {
+		return nil, Proof{}, fmt.Errorf("%w: namespace %q root absent", ErrInvalidManifest, ns)
+	}
 	globalPath := provePath(gLeaves, gi)
 	return value, Proof{nsPath: nsPath, globalPath: globalPath}, nil
+}
+
+type namespaceRoot struct {
+	name string
+	root Hash
 }

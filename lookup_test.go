@@ -32,7 +32,10 @@ func TestLookupParity(t *testing.T) {
 			key := []byte{byte(i >> 8), byte(i)}
 
 			gotVal, gerr := Lookup(bytes.NewReader(data), ns, key)
-			wantVal, _ := s.Get(ns, key)
+			wantVal, err := s.Get(ns, key)
+			if err != nil {
+				t.Fatalf("Get(%q,%x): %v", ns, key, err)
+			}
 			if gerr != nil || !bytes.Equal(gotVal, wantVal) {
 				t.Fatalf("Lookup(%q,%x)=%x,%v want %x", ns, key, gotVal, gerr, wantVal)
 			}

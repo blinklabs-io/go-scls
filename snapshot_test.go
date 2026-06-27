@@ -142,6 +142,23 @@ func TestOpenChunkHeaderFallback(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsUnsupportedChunkFormat(t *testing.T) {
+	rec := chunkRecord(t, singleEntryChunk("a", 0, 0x01))
+	rec.payload = append([]byte(nil), rec.payload...)
+	rec.payload[8] = ChunkFormatZstd
+	file := buildRawFile(t,
+		rec,
+		manifestRecord(t, &Manifest{
+			TotalEntries: 1,
+			TotalChunks:  1,
+			Namespaces:   []NamespaceInfo{{Name: "a", EntriesCount: 1, ChunksCount: 1}},
+		}),
+	)
+	if _, err := Open(bytes.NewReader(file), int64(len(file))); !errors.Is(err, ErrUnsupportedChunkFormat) {
+		t.Fatalf("want ErrUnsupportedChunkFormat, got %v", err)
+	}
+}
+
 func TestSnapshotGet(t *testing.T) {
 	data, _ := buildFile(t)
 	s, err := Open(bytes.NewReader(data), int64(len(data)))
@@ -194,5 +211,32 @@ func TestSnapshotProve(t *testing.T) {
 	}
 	if _, _, err := s.Prove("aaa/v0", []byte{0xFF, 0xFF}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("absent key: got %v want ErrNotFound", err)
+	}
+}
+
+func TestSnapshotProveRejectsManifestGlobalRootMismatch(t *testing.T) {
+	data, _ := buildFile(t)
+	file := append([]byte(nil), data...)
+
+	br := bytes.NewReader(file)
+	offset := 0
+	for {
+		recType, payload, err := readRecord(br)
+		if err != nil {
+			t.Fatal("manifest not found")
+		}
+		if recType == RecordTypeManifest {
+			file[offset+5+len(payload)-4-HashSize] ^= 0xff
+			break
+		}
+		offset += 5 + len(payload)
+	}
+
+	s, err := Open(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, _, err := s.Prove("aaa/v0", []byte{0, 0}); !errors.Is(err, ErrInvalidManifest) {
+		t.Fatalf("want ErrInvalidManifest, got %v", err)
 	}
 }

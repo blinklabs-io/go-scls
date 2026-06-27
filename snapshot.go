@@ -102,7 +102,10 @@ func Open(r io.ReaderAt, size int64) (*Snapshot, error) {
 		}
 		switch recType {
 		case RecordTypeChunk:
-			ns, firstKey, ok := parseChunkHeader(body)
+			ns, firstKey, ok, err := parseChunkHeader(body)
+			if err != nil {
+				return nil, err
+			}
 			if !ok {
 				// Probe too small (namespace + first key exceed chunkHeaderProbe):
 				// re-read the full record. readRecordAt returns the payload
@@ -115,7 +118,10 @@ func Open(r io.ReaderAt, size int64) (*Snapshot, error) {
 				full := make([]byte, 1+len(payload))
 				full[0] = rt
 				copy(full[1:], payload)
-				ns, firstKey, ok = parseChunkHeader(full)
+				ns, firstKey, ok, err = parseChunkHeader(full)
+				if err != nil {
+					return nil, err
+				}
 				if !ok {
 					return nil, fmt.Errorf("%w: unparseable chunk at offset %d", ErrTruncatedRecord, off)
 				}
@@ -195,29 +201,32 @@ func (s *Snapshot) readRecordHeaderAt(off, limit int64) (recType byte, body []by
 // Layout: type(1) | seq(8) | format(1) | len_ns(4) | ns | len_key(4) |
 //
 //	entry0_size(4) | entry0_key(len_key) | ...
-func parseChunkHeader(body []byte) (ns string, firstKey []byte, ok bool) {
+func parseChunkHeader(body []byte) (ns string, firstKey []byte, ok bool, err error) {
 	if len(body) < 1 || body[0] != RecordTypeChunk {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	p := body[1:]
 	if len(p) < 8+1+4 {
-		return "", nil, false
+		return "", nil, false, nil
+	}
+	if p[8] != ChunkFormatRaw {
+		return "", nil, false, fmt.Errorf("%w: 0x%02x", ErrUnsupportedChunkFormat, p[8])
 	}
 	lenNS := int64(binary.BigEndian.Uint32(p[9:13]))
 	off := int64(13)
 	if off+lenNS+4 > int64(len(p)) {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	nsBytes := p[off : off+lenNS]
 	off += lenNS
 	keyLen := int64(binary.BigEndian.Uint32(p[off : off+4]))
 	off += 4
 	if off+4+keyLen > int64(len(p)) {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	off += 4 // skip entry0 size prefix
 	firstKey = append([]byte(nil), p[off:off+keyLen]...)
-	return string(nsBytes), firstKey, true
+	return string(nsBytes), firstKey, true, nil
 }
 
 // Manifest returns the file's parsed MANIFEST.
@@ -333,6 +342,9 @@ func (s *Snapshot) Prove(ns string, key []byte) (value []byte, proof Proof, err 
 		return nil, Proof{}, fmt.Errorf("%w: namespace %q root inconsistent with manifest", ErrInvalidManifest, ns)
 	}
 	globalPath := provePath(gLeaves, gi)
+	if fold(NamespaceLeafDigest(s.namespaceDigest(ns)), globalPath) != s.manifest.RootHash {
+		return nil, Proof{}, fmt.Errorf("%w: global root inconsistent with manifest", ErrInvalidManifest)
+	}
 	return value, Proof{nsPath: nsPath, globalPath: globalPath}, nil
 }
 
