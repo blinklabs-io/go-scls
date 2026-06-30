@@ -35,6 +35,9 @@ manifest_locate.go  ReadManifest: seek to the manifest via the offset bookend
 writer.go    streaming Writer (ordering enforcement, count/size chunk rotation)
 reader.go    streaming Reader (skips unknown record types)
 verify.go    Verify with 3 levels; FuzzVerify + FuzzRoundTrip targets
+proof.go     Proof/proofStep types, fold, VerifyProof, provePath
+snapshot.go  Snapshot index (Open, Get, Prove); random-access lookup
+lookup.go    streaming Lookup/LookupProof over a Reader
 spec/        vendored CIP-0165 spec + RECONCILIATION.md (wire-format decisions)
 testdata/    cross-implementation conformance fixtures
 ```
@@ -70,7 +73,7 @@ testdata/    cross-implementation conformance fixtures
 
 zstd chunk formats (`0x01`/`0x02` → `ErrUnsupportedChunkFormat`), DELTA
 records (`ErrUnexpectedRecord`), multi-manifest/appended files, namespace
-payload schemas, proof generation.
+payload schemas.
 
 ## Reference implementations
 

@@ -96,3 +96,56 @@ func BenchmarkVerifyFull(b *testing.B) {
 		}
 	}
 }
+
+func benchKey(i uint64) []byte {
+	key := make([]byte, 32)
+	binary.BigEndian.PutUint64(key, i)
+	return key
+}
+
+func BenchmarkGet(b *testing.B) {
+	data := benchFile(b)
+	s, err := Open(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		b.Fatal(err)
+	}
+	key := benchKey(benchEntries / 2)
+	for b.Loop() {
+		if _, err := s.Get("utxo/v0", key); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProve(b *testing.B) {
+	data := benchFile(b)
+	s, err := Open(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		b.Fatal(err)
+	}
+	key := benchKey(benchEntries / 2)
+	for b.Loop() {
+		if _, _, err := s.Prove("utxo/v0", key); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkVerifyProof(b *testing.B) {
+	data := benchFile(b)
+	s, err := Open(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		b.Fatal(err)
+	}
+	key := benchKey(benchEntries / 2)
+	root := s.Manifest().RootHash
+	val, proof, err := s.Prove("utxo/v0", key)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		if err := VerifyProof(root, "utxo/v0", key, val, proof); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
