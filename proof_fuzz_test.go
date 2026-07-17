@@ -53,3 +53,24 @@ func FuzzVerifyProof(f *testing.F) {
 		_ = VerifyProof(root, "ns", []byte("k"), blob, Proof{nsPath: steps, globalPath: steps})
 	})
 }
+
+// FuzzProofRoundtrip ensures UnmarshalProofBinary never panics and that any
+// input it accepts re-marshals to identical bytes.
+func FuzzProofRoundtrip(f *testing.F) {
+	empty, _ := Proof{}.MarshalBinary()
+	f.Add(empty)
+	f.Add([]byte{1, 0, 0, 0, 1, 1}) // truncated step
+	f.Fuzz(func(t *testing.T, data []byte) {
+		p, err := UnmarshalProofBinary(data)
+		if err != nil {
+			return
+		}
+		out, err := p.MarshalBinary()
+		if err != nil {
+			t.Fatalf("MarshalBinary after successful unmarshal: %v", err)
+		}
+		if !bytes.Equal(out, data) {
+			t.Fatalf("re-marshal mismatch: in=%x out=%x", data, out)
+		}
+	})
+}

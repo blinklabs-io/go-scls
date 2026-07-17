@@ -174,6 +174,14 @@ func (d *decoder) take(n int) []byte {
 	return b
 }
 
+func (d *decoder) u8() byte {
+	b := d.take(1)
+	if b == nil {
+		return 0
+	}
+	return b[0]
+}
+
 func (d *decoder) u32() uint32 {
 	b := d.take(4)
 	if b == nil {

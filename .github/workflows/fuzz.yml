@@ -19,6 +19,7 @@ jobs:
           # the fuzz target (no /... wildcards).
           - {package: ".", fuzz: "FuzzVerify$"}
           - {package: ".", fuzz: "FuzzRoundTrip$"}
+          - {package: ".", fuzz: "FuzzProofRoundtrip$"}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 https://github.com/actions/checkout/releases/tag/v7.0.0
 
