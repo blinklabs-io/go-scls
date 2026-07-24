@@ -70,27 +70,21 @@ func tempSCLS(t *testing.T, data []byte) string {
 
 // executeCommand runs the CLI with args, capturing stdout and stderr.
 func executeCommand(args ...string) (stdout, stderr string, err error) {
+	return executeCommandWithInput(nil, args...)
+}
+
+func executeCommandWithInput(
+	stdin []byte,
+	args ...string,
+) (stdout, stderr string, err error) {
 	root := newRootCmd()
 	var out, errBuf bytes.Buffer
+	if stdin != nil {
+		root.SetIn(bytes.NewReader(stdin))
+	}
 	root.SetOut(&out)
 	root.SetErr(&errBuf)
 	root.SetArgs(args)
 	err = root.Execute()
 	return out.String(), errBuf.String(), err
-}
-
-func withStdin(t *testing.T, data []byte, fn func()) {
-	t.Helper()
-	path := tempSCLS(t, data)
-	f, err := os.Open(path) //nolint:gosec // test-owned temporary file
-	if err != nil {
-		t.Fatalf("open stdin fixture: %v", err)
-	}
-	oldStdin := os.Stdin
-	os.Stdin = f
-	defer func() {
-		os.Stdin = oldStdin
-		_ = f.Close()
-	}()
-	fn()
 }

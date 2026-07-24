@@ -122,7 +122,7 @@ func newProofVerifyCmd() *cobra.Command {
 			"verify`/`info` on the authentic file).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			raw, err := readInput(args[0])
+			raw, err := readInput(args[0], cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -334,9 +334,9 @@ func writeEnvelope(cmd *cobra.Command, outPath, format string, data []byte) erro
 	return os.WriteFile(outPath, data, 0o600)
 }
 
-func readInput(path string) ([]byte, error) {
+func readInput(path string, stdin io.Reader) ([]byte, error) {
 	if path == "-" {
-		return io.ReadAll(os.Stdin)
+		return io.ReadAll(stdin)
 	}
 	return os.ReadFile(path) //nolint:gosec // user-specified input path
 }

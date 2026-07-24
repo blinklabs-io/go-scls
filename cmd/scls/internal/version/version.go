@@ -22,7 +22,7 @@ var (
 	CommitHash string
 )
 
-func GetVersionString() string {
+func VersionString() string {
 	if Version != "" && CommitHash != "" {
 		return fmt.Sprintf("%s (commit %s)", Version, CommitHash)
 	}

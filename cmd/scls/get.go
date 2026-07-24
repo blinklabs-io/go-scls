@@ -17,6 +17,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/blinklabs-io/go-scls"
@@ -34,7 +35,12 @@ func newGetCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid key hex: %w", err)
 			}
-			value, err := getValue(args[0], args[1], key)
+			value, err := getValue(
+				args[0],
+				args[1],
+				key,
+				cmd.InOrStdin(),
+			)
 			if err != nil {
 				return err
 			}
@@ -62,9 +68,13 @@ func newGetCmd() *cobra.Command {
 
 // getValue fetches (ns, key). A real file uses the indexed random-access path
 // (Open+Get); "-" uses the single-pass streaming Lookup.
-func getValue(path, ns string, key []byte) ([]byte, error) {
+func getValue(
+	path, ns string,
+	key []byte,
+	stdin io.Reader,
+) ([]byte, error) {
 	if path == "-" {
-		return scls.Lookup(os.Stdin, ns, key)
+		return scls.Lookup(stdin, ns, key)
 	}
 	f, err := os.Open(path) //nolint:gosec // user-specified input path
 	if err != nil {

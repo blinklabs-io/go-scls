@@ -15,11 +15,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/blinklabs-io/go-scls"
+	"github.com/spf13/cobra"
 )
 
 func lsFixture(t *testing.T) string {
@@ -38,6 +43,51 @@ func TestLsNamespaces(t *testing.T) {
 	}
 	if !strings.Contains(out, "aaa") || !strings.Contains(out, "bbb") {
 		t.Errorf("expected both namespaces, got %q", out)
+	}
+}
+
+func TestRenderNamespacesSortsManifestOrder(t *testing.T) {
+	manifest := &scls.Manifest{Namespaces: []scls.NamespaceInfo{
+		{Name: "zebra", EntriesCount: 2, ChunksCount: 1},
+		{Name: "alpha", EntriesCount: 1, ChunksCount: 1},
+	}}
+	for _, asJSON := range []bool{false, true} {
+		name := "text"
+		if asJSON {
+			name = "json"
+		}
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			if err := renderNamespaces(cmd, manifest, asJSON); err != nil {
+				t.Fatalf("renderNamespaces: %v", err)
+			}
+			if asJSON {
+				var got struct {
+					Namespaces []namespaceJSON `json:"namespaces"`
+				}
+				if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+					t.Fatalf("unmarshal output: %v", err)
+				}
+				if len(got.Namespaces) != 2 ||
+					got.Namespaces[0].Name != "alpha" ||
+					got.Namespaces[1].Name != "zebra" {
+					t.Fatalf(
+						"namespace order = %#v, want alpha, zebra",
+						got.Namespaces,
+					)
+				}
+				return
+			}
+			if strings.Index(buf.String(), "alpha") >
+				strings.Index(buf.String(), "zebra") {
+				t.Fatalf("namespaces are not sorted:\n%s", buf.String())
+			}
+		})
+	}
+	if manifest.Namespaces[0].Name != "zebra" {
+		t.Fatal("renderNamespaces mutated manifest namespace order")
 	}
 }
 
@@ -63,16 +113,15 @@ func TestLsKeysJSON(t *testing.T) {
 }
 
 func TestLsStdinConsumesManifestBookend(t *testing.T) {
+	t.Parallel()
 	data := buildSCLS(t, 1, map[string][]kv{"aaa": {{[]byte("k1"), []byte("v")}}})
-	withStdin(t, data, func() {
-		out, _, err := executeCommand("ls", "-")
-		if err != nil {
-			t.Fatalf("ls -: %v", err)
-		}
-		if !strings.Contains(out, "aaa") {
-			t.Fatalf("unexpected ls output: %q", out)
-		}
-	})
+	out, _, err := executeCommandWithInput(data, "ls", "-")
+	if err != nil {
+		t.Fatalf("ls -: %v", err)
+	}
+	if !strings.Contains(out, "aaa") {
+		t.Fatalf("unexpected ls output: %q", out)
+	}
 }
 
 type errorWriter struct{ err error }

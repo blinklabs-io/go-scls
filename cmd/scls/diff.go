@@ -53,11 +53,11 @@ func newDiffCmd() *cobra.Command {
 		Short: "Compare two SCLS files",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			oldM, err := loadManifest(args[0])
+			oldM, err := loadManifest(args[0], cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
-			newM, err := loadManifest(args[1])
+			newM, err := loadManifest(args[1], cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -283,13 +283,21 @@ func renderDiff(cmd *cobra.Command, rep *diffReport, detailed, asJSON bool) erro
 		return printJSON(cmd.OutOrStdout(), rep)
 	}
 	w := cmd.OutOrStdout()
-	fmt.Fprintf(w, "slot: %d -> %d\n", rep.OldSlot, rep.NewSlot)
+	if _, err := fmt.Fprintf(w, "slot: %d -> %d\n",
+		rep.OldSlot, rep.NewSlot); err != nil {
+		return err
+	}
 	for _, d := range rep.Namespaces {
-		fmt.Fprintf(w, "%-10s %s (entries %d -> %d)\n",
-			d.Name, d.Status, d.OldEntries, d.NewEntries)
+		if _, err := fmt.Fprintf(w, "%-10s %s (entries %d -> %d)\n",
+			d.Name, d.Status, d.OldEntries, d.NewEntries); err != nil {
+			return err
+		}
 		if detailed {
 			for _, kc := range d.KeyChanges {
-				fmt.Fprintf(w, "    %s %s\n", kc.Op, kc.Key)
+				if _, err := fmt.Fprintf(w, "    %s %s\n",
+					kc.Op, kc.Key); err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -3,7 +3,7 @@ name: Docker CI
 on:
   pull_request:
     branches: ['main']
-    paths: ['Dockerfile','*.go','cmd/**','go.*','Makefile','.github/workflows/ci-docker.yml']
+    paths: ['Dockerfile','**/*.go','cmd/**','go.*','Makefile','.github/workflows/ci-docker.yml']
 
 env:
   GHCR_IMAGE_NAME: ghcr.io/blinklabs-io/go-scls
@@ -36,9 +36,18 @@ jobs:
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0 https://github.com/docker/build-push-action/releases/tag/v7.2.0
         with:
           context: .
+          load: true
           push: false
           platforms: linux/${{ matrix.arch }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            scls-ci:${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: smoke test
+        run: |
+          docker run --rm scls-ci:${{ matrix.arch }} version
+          for command in verify info ls get proof diff; do
+            docker run --rm scls-ci:${{ matrix.arch }} "${command}" --help
+          done

@@ -17,10 +17,13 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/blinklabs-io/go-scls"
+	"github.com/spf13/cobra"
 )
 
 func TestDiffRootLevel(t *testing.T) {
@@ -74,14 +77,63 @@ func TestDiffJSON(t *testing.T) {
 	}
 }
 
+type failAfterWriter struct {
+	writesBeforeError int
+	err               error
+}
+
+func (w *failAfterWriter) Write(p []byte) (int, error) {
+	if w.writesBeforeError == 0 {
+		return 0, w.err
+	}
+	w.writesBeforeError--
+	return len(p), nil
+}
+
+func TestRenderDiffReturnsTextWriteErrors(t *testing.T) {
+	writeErr := errors.New("closed output")
+	rep := &diffReport{
+		OldSlot: 1,
+		NewSlot: 2,
+		Namespaces: []nsDiff{{
+			Name:       "ns",
+			Status:     "changed",
+			OldEntries: 1,
+			NewEntries: 1,
+			KeyChanges: []keyChange{{Op: "~", Key: "01"}},
+		}},
+	}
+	for _, writesBeforeError := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("write-%d", writesBeforeError+1), func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.SetOut(&failAfterWriter{
+				writesBeforeError: writesBeforeError,
+				err:               writeErr,
+			})
+			err := renderDiff(cmd, rep, true, false)
+			if !errors.Is(err, writeErr) {
+				t.Fatalf("renderDiff error = %v, want output error", err)
+			}
+		})
+	}
+}
+
 func TestDiffStdinConsumesManifestBookend(t *testing.T) {
 	data := buildSCLS(t, 1, map[string][]kv{"ns": {{[]byte("k1"), []byte("v")}}})
 	path := tempSCLS(t, data)
-	for _, args := range [][]string{{"diff", "-", path}, {"diff", path, "-"}} {
-		withStdin(t, data, func() {
-			out, _, err := executeCommand(args...)
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "stdin as old", args: []string{"diff", "-", path}},
+		{name: "stdin as new", args: []string{"diff", path, "-"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			out, _, err := executeCommandWithInput(data, tt.args...)
 			if err != nil {
-				t.Fatalf("%v: %v", args, err)
+				t.Fatalf("%v: %v", tt.args, err)
 			}
 			if !strings.Contains(out, "unchanged") {
 				t.Fatalf("unexpected diff output: %q", out)

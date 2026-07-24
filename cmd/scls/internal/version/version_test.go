@@ -16,7 +16,7 @@ package version
 
 import "testing"
 
-func TestGetVersionString(t *testing.T) {
+func TestVersionString(t *testing.T) {
 	originalVersion, originalCommitHash := Version, CommitHash
 	t.Cleanup(func() {
 		Version, CommitHash = originalVersion, originalCommitHash
@@ -33,7 +33,7 @@ func TestGetVersionString(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			Version, CommitHash = tc.version, tc.commit
-			if got := GetVersionString(); got != tc.want {
+			if got := VersionString(); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})

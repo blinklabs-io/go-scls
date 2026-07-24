@@ -22,11 +22,11 @@ import (
 	"github.com/blinklabs-io/go-scls"
 )
 
-// openStream returns a reader over path, or os.Stdin for "-". The returned
+// openStream returns a reader over path, or stdin for "-". The returned
 // close func is always safe to call (a no-op for stdin).
-func openStream(path string) (io.Reader, func() error, error) {
+func openStream(path string, stdin io.Reader) (io.Reader, func() error, error) {
 	if path == "-" {
-		return os.Stdin, func() error { return nil }, nil
+		return stdin, func() error { return nil }, nil
 	}
 	f, err := os.Open(path) //nolint:gosec // user-specified input path
 	if err != nil {
@@ -61,9 +61,12 @@ func drainReader(r io.Reader) (*scls.Reader, error) {
 // HDR record in both cases. A real file reads the header, then locates the
 // manifest via the trailing-offset bookend (no full scan); "-" streams stdin to
 // EOF.
-func readHeaderAndManifest(path string) (uint32, *scls.Manifest, error) {
+func readHeaderAndManifest(
+	path string,
+	stdin io.Reader,
+) (uint32, *scls.Manifest, error) {
 	if path == "-" {
-		sr, err := drainReader(os.Stdin)
+		sr, err := drainReader(stdin)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -91,7 +94,7 @@ func readHeaderAndManifest(path string) (uint32, *scls.Manifest, error) {
 // loadManifest returns the file's MANIFEST, validating the HDR first so that a
 // non-SCLS blob carrying a syntactically valid trailing manifest is rejected
 // rather than presented as SCLS metadata.
-func loadManifest(path string) (*scls.Manifest, error) {
-	_, m, err := readHeaderAndManifest(path)
+func loadManifest(path string, stdin io.Reader) (*scls.Manifest, error) {
+	_, m, err := readHeaderAndManifest(path, stdin)
 	return m, err
 }

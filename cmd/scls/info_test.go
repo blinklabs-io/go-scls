@@ -48,14 +48,13 @@ func TestInfoJSON(t *testing.T) {
 }
 
 func TestInfoStdinConsumesManifestBookend(t *testing.T) {
+	t.Parallel()
 	data := buildSCLS(t, 99, map[string][]kv{"utxo": {{[]byte("aaaa"), []byte("v1")}}})
-	withStdin(t, data, func() {
-		out, _, err := executeCommand("info", "-")
-		if err != nil {
-			t.Fatalf("info -: %v", err)
-		}
-		if !strings.Contains(out, "slot:           99") {
-			t.Fatalf("unexpected info output: %q", out)
-		}
-	})
+	out, _, err := executeCommandWithInput(data, "info", "-")
+	if err != nil {
+		t.Fatalf("info -: %v", err)
+	}
+	if !strings.Contains(out, "slot:           99") {
+		t.Fatalf("unexpected info output: %q", out)
+	}
 }

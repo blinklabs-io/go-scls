@@ -25,7 +25,7 @@ func newVersionCmd() *cobra.Command {
 		Short: "Print version and exit",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cmd.Println(version.GetVersionString())
+			cmd.Println(version.VersionString())
 			return nil
 		},
 	}

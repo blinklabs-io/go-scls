@@ -48,7 +48,7 @@ func newVerifyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r, closeFn, err := openStream(args[0])
+			r, closeFn, err := openStream(args[0], cmd.InOrStdin())
 			if err != nil {
 				return err
 			}

@@ -16,6 +16,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,13 +105,14 @@ func rootFromInfo(t *testing.T, path string) string {
 	if err != nil {
 		t.Fatalf("info: %v", err)
 	}
-	const marker = `"rootHash": "`
-	i := strings.Index(out, marker)
-	if i < 0 {
-		t.Fatalf("no rootHash in %q", out)
+	var info infoJSON
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		t.Fatalf("unmarshal info JSON: %v", err)
 	}
-	rest := out[i+len(marker):]
-	return rest[:strings.IndexByte(rest, '"')]
+	if info.RootHash == "" {
+		t.Fatalf("empty rootHash in %q", out)
+	}
+	return info.RootHash
 }
 
 func TestProofVerifyTampered(t *testing.T) {

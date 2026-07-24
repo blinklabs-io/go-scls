@@ -40,7 +40,7 @@ func newInfoCmd() *cobra.Command {
 		Short: "Show SCLS file metadata",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ver, m, err := readHeaderAndManifest(args[0])
+			ver, m, err := readHeaderAndManifest(args[0], cmd.InOrStdin())
 			if err != nil {
 				return err
 			}

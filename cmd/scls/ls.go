@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/blinklabs-io/go-scls"
 	"github.com/spf13/cobra"
@@ -32,7 +34,7 @@ func newLsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			asJSON, _ := cmd.Flags().GetBool("json")
 			if len(args) == 1 {
-				m, err := loadManifest(args[0])
+				m, err := loadManifest(args[0], cmd.InOrStdin())
 				if err != nil {
 					return err
 				}
@@ -49,7 +51,7 @@ func newLsCmd() *cobra.Command {
 // of buffering every key. Namespaces are emitted in ascending order, so it
 // stops once the stream passes ns.
 func streamKeys(cmd *cobra.Command, path, ns string, asJSON bool) error {
-	r, closeFn, err := openStream(path)
+	r, closeFn, err := openStream(path, cmd.InOrStdin())
 	if err != nil {
 		return err
 	}
@@ -142,11 +144,15 @@ func (kw *keyWriter) close() error {
 }
 
 func renderNamespaces(cmd *cobra.Command, m *scls.Manifest, asJSON bool) error {
+	namespaces := slices.Clone(m.Namespaces)
+	slices.SortFunc(namespaces, func(a, b scls.NamespaceInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 	if asJSON {
 		out := struct {
 			Namespaces []namespaceJSON `json:"namespaces"`
 		}{Namespaces: []namespaceJSON{}}
-		for _, ns := range m.Namespaces {
+		for _, ns := range namespaces {
 			out.Namespaces = append(out.Namespaces, namespaceJSON{
 				Name: ns.Name, Entries: ns.EntriesCount,
 				Chunks: ns.ChunksCount, Digest: hexstr(ns.Digest[:]),
@@ -155,8 +161,11 @@ func renderNamespaces(cmd *cobra.Command, m *scls.Manifest, asJSON bool) error {
 		return printJSON(cmd.OutOrStdout(), out)
 	}
 	w := cmd.OutOrStdout()
-	for _, ns := range m.Namespaces {
-		fmt.Fprintf(w, "%s  entries=%d chunks=%d\n", ns.Name, ns.EntriesCount, ns.ChunksCount)
+	for _, ns := range namespaces {
+		if _, err := fmt.Fprintf(w, "%s  entries=%d chunks=%d\n",
+			ns.Name, ns.EntriesCount, ns.ChunksCount); err != nil {
+			return err
+		}
 	}
 	return nil
 }
