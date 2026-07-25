@@ -132,6 +132,11 @@ func TestRejectsNonCanonicalEncoding(t *testing.T) {
 			encoded: []byte{0xa2, 0x62, 'a', 'a', 0x00, 0x61, 'b', 0x00},
 			want:    ErrMapOrder,
 		},
+		{
+			name:    "encoded-byte map order",
+			encoded: []byte{0xa2, 0x20, 0x00, 0x18, 0x18, 0x00},
+			want:    ErrMapOrder,
+		},
 		{name: "trailing data", encoded: []byte{0x00, 0x00}, want: ErrTrailingData},
 		{name: "float", encoded: []byte{0xf9, 0x00, 0x00}, want: ErrUnsupported},
 	}

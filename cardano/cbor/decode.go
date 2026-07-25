@@ -300,11 +300,5 @@ func (d *decoder) syntax(err error) error {
 }
 
 func compareKeys(left, right []byte) int {
-	if len(left) < len(right) {
-		return -1
-	}
-	if len(left) > len(right) {
-		return 1
-	}
 	return bytes.Compare(left, right)
 }
