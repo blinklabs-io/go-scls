@@ -7,6 +7,8 @@
 *.dll
 *.so
 *.dylib
+/scls
+/cmd/scls/scls
 
 # Test binary, built with `go test -c`
 *.test

@@ -54,6 +54,32 @@ implementation (see [testdata/README.md](testdata/README.md)).
 	// uses the trailing offset bookend; file is an io.ReadSeeker
 	manifest, err := scls.ReadManifest(file)
 
+## CLI
+
+The `scls` command-line tool inspects and verifies SCLS files. Build it with
+`make build` (writes `./scls`), or run the published Docker image
+`ghcr.io/blinklabs-io/go-scls` / `blinklabs/scls`. Release binaries are
+attached to each GitHub release with build-provenance attestations.
+
+	scls verify <file> [--level structure|chunks|full]
+	scls info <file>
+	scls ls <file> [namespace]
+	scls get <file> <namespace> <key-hex> [--hex]
+	scls proof generate <file> <namespace> <key-hex> [-o out] [--format json|binary]
+	scls proof verify <proof-file> [--root <hex>]
+	scls diff <old.scls> <new.scls> [--detailed]
+	scls version
+
+`verify`, `info`, `ls`, `get`, `proof verify`, and `diff` accept `--json` for
+structured output; `proof generate` uses `--format json|binary` instead.
+`verify`, `info`, `ls`, and `get` accept `-` in place of a file to read from
+stdin.
+
+Proofs are portable: `scls proof generate` emits a self-contained artifact that
+`scls proof verify` checks without the source file. Because a proof's embedded
+root is self-referential, pass `--root` (obtained from a trusted `scls verify`
+or `info`) to verify against a root you trust.
+
 ## License
 
 Apache-2.0

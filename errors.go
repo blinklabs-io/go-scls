@@ -38,4 +38,5 @@ var (
 	ErrUnexpectedRecord       = errors.New("scls: unexpected record after manifest")
 	ErrNotFound               = errors.New("scls: entry or namespace not found")
 	ErrProofMismatch          = errors.New("scls: proof does not verify against root")
+	ErrInvalidProof           = errors.New("scls: invalid serialized proof")
 )

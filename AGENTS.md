@@ -10,6 +10,7 @@ reference; Claude-specific layer in `CLAUDE.md`.
 | Action | Command |
 |--------|---------|
 | Tests + race | `make test` |
+| Build the CLI | `make build` (writes `./scls`) |
 | Format | `make format` |
 | Nilaway | `make nilaway` |
 | Fuzz the verifier | `go test -run=NONE -fuzz=FuzzVerify -fuzztime=2m .` |
@@ -40,6 +41,9 @@ snapshot.go  Snapshot index (Open, Get, Prove); random-access lookup
 lookup.go    streaming Lookup/LookupProof over a Reader
 spec/        vendored CIP-0165 spec + RECONCILIATION.md (wire-format decisions)
 testdata/    cross-implementation conformance fixtures
+cmd/scls/    nested Go module: the `scls` cobra CLI. Isolated from the library
+             so cobra never enters the library's dependency graph; builds
+             against the checked-out library via a `replace` directive.
 ```
 
 ## Invariants that are easy to get wrong
