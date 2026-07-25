@@ -78,6 +78,8 @@ type Tag struct {
 	Value  any
 }
 
-// Simple represents an unassigned CBOR simple value. Values 20 through 23
-// have dedicated Go representations and are rejected when supplied as Simple.
+// Simple represents an unassigned CBOR simple value. Values 20 through 22
+// have dedicated Go representations (false, true, nil) and are rejected
+// when supplied to Marshal; Simple(23) (undefined) has no dedicated Go type
+// and is accepted.
 type Simple uint8

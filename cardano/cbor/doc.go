@@ -17,5 +17,7 @@
 //
 // The decoder rejects indefinite-length items, non-minimal argument
 // encodings, duplicate map keys, and map keys outside deterministic order.
-// Floating-point values are not part of the supported ledger-state subset.
+// Map keys use RFC 8949's core deterministic encoding rule: bytewise
+// lexicographic order of their deterministic encodings. Floating-point values
+// are not part of the supported ledger-state subset.
 package cbor

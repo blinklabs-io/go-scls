@@ -194,6 +194,26 @@ func TestMarshalSortsMapAndRejectsDuplicates(t *testing.T) {
 	}
 }
 
+func TestRFC8949MapOrdering(t *testing.T) {
+	t.Parallel()
+	// RFC 8949 orders deterministic key encodings bytewise, so 24 (18 18)
+	// precedes -1 (20), even though the latter encoding is shorter.
+	want := []byte{0xa2, 0x18, 0x18, 0x00, 0x20, 0x00}
+	if err := Validate(want); err != nil {
+		t.Fatalf("Validate(%x) error = %v", want, err)
+	}
+	encoded, err := Marshal(Map{
+		{Key: Negative(0), Value: uint64(0)},
+		{Key: uint64(24), Value: uint64(0)},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if !bytes.Equal(encoded, want) {
+		t.Fatalf("Marshal() = %x, want %x", encoded, want)
+	}
+}
+
 func TestUnmarshalCopiesByteStrings(t *testing.T) {
 	t.Parallel()
 	encoded := []byte{0x42, 0xaa, 0xbb}
