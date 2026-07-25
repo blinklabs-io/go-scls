@@ -111,7 +111,9 @@ func appendSigned(dst *[]byte, value int64) {
 		appendArgument(dst, 0, uint64(value))
 		return
 	}
-	appendArgument(dst, 1, uint64(-(value + 1)))
+	// Adding one before negation keeps MinInt64 representable and guarantees a
+	// non-negative result before conversion.
+	appendArgument(dst, 1, uint64(-(value + 1))) //nolint:gosec
 }
 
 func appendArgument(dst *[]byte, major byte, value uint64) {

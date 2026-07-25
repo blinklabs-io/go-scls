@@ -245,7 +245,7 @@ func (d *decoder) byte() (byte, error) {
 }
 
 func (d *decoder) uint(size int) (uint64, error) {
-	value, err := d.bytes(uint64(size))
+	value, err := d.bytesSize(size)
 	if err != nil {
 		return 0, err
 	}
@@ -257,29 +257,46 @@ func (d *decoder) uint(size int) (uint64, error) {
 }
 
 func (d *decoder) bytes(length uint64) ([]byte, error) {
+	if length > math.MaxInt {
+		return nil, d.syntax(errors.Join(ErrInvalid, errors.New("item length exceeds platform limit")))
+	}
+	// The math.MaxInt check above makes the conversion safe.
+	lengthInt := int(length) //nolint:gosec
 	remaining := len(d.data) - d.offset
-	if length > uint64(remaining) {
+	if lengthInt > remaining {
 		return nil, d.syntax(errors.Join(ErrInvalid, errors.New("unexpected end of input")))
 	}
-	end := d.offset + int(length)
+	end := d.offset + lengthInt
+	value := d.data[d.offset:end]
+	d.offset = end
+	return value, nil
+}
+
+func (d *decoder) bytesSize(length int) ([]byte, error) {
+	remaining := len(d.data) - d.offset
+	if length < 0 || length > remaining {
+		return nil, d.syntax(errors.Join(ErrInvalid, errors.New("unexpected end of input")))
+	}
+	end := d.offset + length
 	value := d.data[d.offset:end]
 	d.offset = end
 	return value, nil
 }
 
 func (d *decoder) collectionLength(length uint64) (int, error) {
-	if length > uint64(len(d.data)-d.offset) || length > uint64(maxInt()) {
+	if length > math.MaxInt {
 		return 0, d.syntax(errors.Join(ErrInvalid, fmt.Errorf("collection length %d exceeds input", length)))
 	}
-	return int(length), nil
+	// The math.MaxInt check above makes the conversion safe.
+	count := int(length) //nolint:gosec
+	if count > len(d.data)-d.offset {
+		return 0, d.syntax(errors.Join(ErrInvalid, fmt.Errorf("collection length %d exceeds input", length)))
+	}
+	return count, nil
 }
 
 func (d *decoder) syntax(err error) error {
 	return &SyntaxError{Offset: d.offset, Err: err}
-}
-
-func maxInt() int {
-	return int(^uint(0) >> 1)
 }
 
 func compareKeys(left, right []byte) int {
