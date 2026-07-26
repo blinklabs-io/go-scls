@@ -63,17 +63,24 @@ In order to provide types of the values and be able to store and verify only par
 
 Each logical table/type is a namespace identified by a canonical string (e.g., `"utxo"`, `"gov"`). Namespace identifiers are UTF-8 encoded; all comparisons and ordering use bytewise (lexicographic by Unicode codepoint) ordering on the UTF-8 byte representation.
 
-| Shortname           | Content                         |
-| ------------------- | ------------------------------- |
-| blocks/v0           | Blocks created                  |
-| gov/committee/v0    | Governance action state         |
-| gov/constitution/v0 | Constitution                    |
-| gov/pparams/v0      | Protocol parameters             |
-| gov/proposals/v0    | Update proposals                |
-| pool_stake/v0       | Stake delegation                |
-| nonce/v0            | Nonces                          |
-| snapshots/v0        | snapshots                       |
-| utxo/v0             | UTXOs                           |
+| Shortname                                      | Content                    |
+| ---------------------------------------------- | -------------------------- |
+| blocks/v0                                      | Blocks created             |
+| entities/accounts/v0                           | Accounts                   |
+| entities/committee/v0                          | Committee entity state     |
+| entities/dreps/v0                              | DReps                      |
+| entities/stake_pools/v0                        | Stake pools                |
+| entities/stake_pools/vrf_key_hashes/v0         | Stake pool VRF key hashes  |
+| gov/committee/v0                               | Governance committee       |
+| gov/constitution/v0                            | Constitution               |
+| gov/pparams/v0                                 | Protocol parameters        |
+| gov/proposals/v0                               | Governance proposals       |
+| gov/proposals/roots/v0                         | Governance proposal roots  |
+| nonces/v0                                      | Nonces                     |
+| snapshots/mark/v0                              | Mark snapshot              |
+| snapshots/set/v0                               | Set snapshot               |
+| snapshots/go/v0                                | Go snapshot                |
+| utxo/v0                                        | UTXOs                      |
 
 New namespaces may and will be introduced in the future. With new eras and features, new types of the data will be introduced and stored. In order to define what data is stored in the SCLS file, tools fill the `MANIFEST` record and define namespaces. The order of the namespaces does not change the signatures and other integrity data.
 

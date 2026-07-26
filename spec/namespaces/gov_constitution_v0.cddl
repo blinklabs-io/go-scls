@@ -1,5 +1,5 @@
 ; This file was auto-generated from huddle.
-; Source: https://github.com/tweag/cardano-cls/blob/main/scls-cardano/cddl-src/Cardano/SCLS/Namespace/GovConstitution.hs
+; Source commit: https://github.com/koslambrou/cardano-cls/blob/a7ddf62e6291b297889e78b4df95e2fb605c312f/scls-cardano/cddl-src/Cardano/SCLS/Namespace/GovConstitution.hs
 
 ;  Constitution record entry
 ;
@@ -13,9 +13,10 @@
 ;
 ;  gov_constitution:
 ;    seq:
-;      - id: epoch
-;        doc: Current epoch.
-;        type: u8
+;      - id: singleton
+;        doc: singleton key with value 0
+;        type: u1
+;        valid: 0
 ;  ```
 record_entry = constitution
 
@@ -39,4 +40,3 @@ url = text .size (0 .. 128)
 script_hash = hash28
 
 hash28 = bytes .size 28
-
