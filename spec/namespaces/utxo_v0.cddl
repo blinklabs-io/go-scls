@@ -1,5 +1,5 @@
 ; This file was auto-generated from huddle.
-; Source: https://github.com/tweag/cardano-cls/blob/main/scls-cardano/cddl-src/Cardano/SCLS/Namespace/UTxO.hs
+; Source commit: https://github.com/koslambrou/cardano-cls/blob/a7ddf62e6291b297889e78b4df95e2fb605c312f/scls-cardano/cddl-src/Cardano/SCLS/Namespace/UTxO.hs
 
 ;  The key for the entry is one of the following:
 ;
@@ -254,4 +254,3 @@ invalid_before = (4, slot_no)
 slot_no = uint .size 8
 
 invalid_hereafter = (5, slot_no)
-

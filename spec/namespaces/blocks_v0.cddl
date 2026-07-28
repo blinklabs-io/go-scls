@@ -1,5 +1,5 @@
 ; This file was auto-generated from huddle.
-; Source: https://github.com/tweag/cardano-cls/blob/main/scls-cardano/cddl-src/Cardano/SCLS/Namespace/Blocks.hs
+; Source commit: https://github.com/koslambrou/cardano-cls/blob/a7ddf62e6291b297889e78b4df95e2fb605c312f/scls-cardano/cddl-src/Cardano/SCLS/Namespace/Blocks.hs
 
 ;  Values for the blocks.
 ;
@@ -24,4 +24,3 @@
 ;          type: u8
 ;  ```
 record_entry = int
-
