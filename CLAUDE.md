@@ -9,7 +9,7 @@ and workflow rules.
 |--------|-------|
 | Format version | SCLS v1 (CIP-0165), RAW chunks only |
 | Test functions | 65+ (100% passing), 4 godoc examples, 6 benchmarks |
-| Fuzz targets | 5 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`) |
+| Fuzz targets | 6 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`, `FuzzValidate`) |
 | Conformance fixtures | 5: Haskell-gen `minimal-raw.scls` + 4 Rust-gen (`empty`, `multi-ns`, `multi-chunk`, `multi-ns-multi-chunk`); all pass VerifyFull, roots/digests pinned in `TestConformanceGolden` |
 | Proofs / lookup | `Open`/`Get` random-access, `Prove`/`VerifyProof` Merkle proofs, streaming `Lookup`/`LookupProof`; portable proofs via `Proof.MarshalBinary`/`UnmarshalProofBinary` |
 | Direct dependencies | `golang.org/x/crypto` only |

@@ -54,6 +54,15 @@ implementation (see [testdata/README.md](testdata/README.md)).
 	// uses the trailing offset bookend; file is an io.ReadSeeker
 	manifest, err := scls.ReadManifest(file)
 
+## Cardano namespace codecs
+
+The `cardano` and `cardano/cbor` packages provide fixed-size namespace key
+codecs, deterministic CBOR payload validation, namespace metadata, and a
+public registry. They use only the Go standard library and do not add a CBOR
+or `gouroboros` dependency to the root module. The root `scls` package
+continues to treat entry values as caller-supplied bytes and never re-encodes
+them.
+
 ## CLI
 
 The `scls` command-line tool inspects and verifies SCLS files. Build it with
