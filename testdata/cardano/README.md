@@ -18,7 +18,8 @@ Regenerate the payload and key fixtures from the repository root:
 ```shell
 docker run --rm -u "$(id -u):$(id -g)" \
   -v "$PWD:/work" -w /work \
-  haskell:9.10.3 runghc testdata/cardano/generate.hs
+  haskell@sha256:7faaab177c19ab5b4258686b8a1c23f955aef8b7eb2e68e11a123a44f40e1df8 \
+  runghc testdata/cardano/generate.hs
 ```
 
 `canonical-namespaces.scls` contains one Haskell-generated canonical payload

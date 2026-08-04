@@ -162,6 +162,73 @@ func TestNegativeCanonicalCBORFixtures(t *testing.T) {
 
 func TestCanonicalNamespaceSCLSFixture(t *testing.T) {
 	t.Parallel()
+	expectedFixtures := map[string]payloadFixture{
+		cardano.BlocksV0Name: {
+			namespace: cardano.BlocksV0Name,
+			file:      "blocks_v0",
+		},
+		cardano.EntitiesAccountsV0Name: {
+			namespace: cardano.EntitiesAccountsV0Name,
+			file:      "entities_accounts_v0",
+		},
+		cardano.EntitiesCommitteeV0Name: {
+			namespace: cardano.EntitiesCommitteeV0Name,
+			file:      "entities_committee_v0",
+		},
+		cardano.EntitiesDRepsV0Name: {
+			namespace: cardano.EntitiesDRepsV0Name,
+			file:      "entities_dreps_v0",
+		},
+		cardano.EntitiesStakePoolsV0Name: {
+			namespace: cardano.EntitiesStakePoolsV0Name,
+			file:      "entities_stake_pools_v0_with_leios",
+			keyFile:   "entities_stake_pools_v0",
+		},
+		cardano.EntitiesStakePoolsVRFKeyHashesV0Name: {
+			namespace: cardano.EntitiesStakePoolsVRFKeyHashesV0Name,
+			file:      "entities_stake_pools_vrf_key_hashes_v0",
+		},
+		cardano.GovCommitteeV0Name: {
+			namespace: cardano.GovCommitteeV0Name,
+			file:      "gov_committee_v0",
+		},
+		cardano.GovConstitutionV0Name: {
+			namespace: cardano.GovConstitutionV0Name,
+			file:      "gov_constitution_v0",
+		},
+		cardano.GovPParamsV0Name: {
+			namespace: cardano.GovPParamsV0Name,
+			file:      "gov_pparams_v0",
+		},
+		cardano.GovProposalsRootsV0Name: {
+			namespace: cardano.GovProposalsRootsV0Name,
+			file:      "gov_proposals_roots_v0",
+		},
+		cardano.GovProposalsV0Name: {
+			namespace: cardano.GovProposalsV0Name,
+			file:      "gov_proposals_v0",
+		},
+		cardano.NoncesV0Name: {
+			namespace: cardano.NoncesV0Name,
+			file:      "nonces_v0",
+		},
+		cardano.SnapshotsGoV0Name: {
+			namespace: cardano.SnapshotsGoV0Name,
+			file:      "snapshots_go_v0",
+		},
+		cardano.SnapshotsMarkV0Name: {
+			namespace: cardano.SnapshotsMarkV0Name,
+			file:      "snapshots_mark_v0",
+		},
+		cardano.SnapshotsSetV0Name: {
+			namespace: cardano.SnapshotsSetV0Name,
+			file:      "snapshots_set_v0",
+		},
+		cardano.UTxOV0Name: {
+			namespace: cardano.UTxOV0Name,
+			file:      "utxo_v0",
+		},
+	}
 	path := filepath.Join(fixtureDirectory, "canonical-namespaces.scls")
 	file, err := os.Open(path)
 	if err != nil {
@@ -194,6 +261,7 @@ func TestCanonicalNamespaceSCLSFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := 0
+	seenNamespaces := make(map[string]struct{}, len(expectedFixtures))
 	for {
 		chunk, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -206,7 +274,23 @@ func TestCanonicalNamespaceSCLSFixture(t *testing.T) {
 		if !ok {
 			t.Fatalf("fixture namespace %q is not registered", chunk.Namespace)
 		}
+		expected, ok := expectedFixtures[chunk.Namespace]
+		if !ok {
+			t.Fatalf("fixture namespace %q is not selected by the generator", chunk.Namespace)
+		}
+		keyFile := expected.keyFile
+		if keyFile == "" {
+			keyFile = expected.file
+		}
+		expectedKey := readFixture(t, keyFile+".key")
+		expectedPayload := readFixture(t, expected.file+".cbor")
 		for _, entry := range chunk.Entries {
+			if !bytes.Equal(entry.Key, expectedKey) {
+				t.Fatalf("%s key differs from %s.key", chunk.Namespace, keyFile)
+			}
+			if !bytes.Equal(entry.Value, expectedPayload) {
+				t.Fatalf("%s payload differs from %s.cbor", chunk.Namespace, expected.file)
+			}
 			if _, err := namespace.Key.DecodeKey(entry.Key); err != nil {
 				t.Fatalf("%s key: %v", chunk.Namespace, err)
 			}
@@ -215,9 +299,16 @@ func TestCanonicalNamespaceSCLSFixture(t *testing.T) {
 			}
 			seen++
 		}
+		seenNamespaces[chunk.Namespace] = struct{}{}
 	}
-	if seen != 16 {
-		t.Fatalf("decoded fixture entries = %d, want 16", seen)
+	if seen != len(expectedFixtures) || len(seenNamespaces) != len(expectedFixtures) {
+		t.Fatalf(
+			"decoded fixture entries/namespaces = %d/%d, want %d/%d",
+			seen,
+			len(seenNamespaces),
+			len(expectedFixtures),
+			len(expectedFixtures),
+		)
 	}
 }
 
