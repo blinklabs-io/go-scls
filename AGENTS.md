@@ -46,6 +46,16 @@ cmd/scls/    nested Go module: the `scls` cobra CLI. Isolated from the library
              against the checked-out library via a `replace` directive.
 ```
 
+## Comments
+
+Comments explain an invariant, a non-obvious algorithm, or a gotcha: why this
+order, why this bound, why the obvious thing is wrong. Delete comments that
+restate the code below them, label sections, or narrate a change's history.
+Prose explaining how a system works belongs in documentation.
+
+Doc comments on exported identifiers are the exception. They are published API
+documentation: keep them accurate and in `// Name ...` form.
+
 ## Invariants that are easy to get wrong
 
 1. The u32 record size prefix covers the **type byte + payload** (HDR record
