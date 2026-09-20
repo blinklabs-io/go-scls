@@ -21,6 +21,16 @@ import (
 
 const maxDepth = 128
 
+// maxPrealloc bounds the capacity reserved for a declared collection length.
+// A declared count is attacker-controlled and bounded only by the remaining
+// input, while one Array slot costs 16 bytes and one Map slot 32, so sizing
+// the allocation from the count alone buys 16 to 32 heap bytes per input byte.
+// Every enclosing collection stays live across the recursive decode of its
+// first element, multiplying that by maxDepth. Reserving a small fixed
+// capacity and letting append grow it keeps peak memory proportional to the
+// bytes actually decoded.
+const maxPrealloc = 1024
+
 var (
 	// ErrInvalid indicates malformed CBOR.
 	ErrInvalid = errors.New("invalid CBOR")
