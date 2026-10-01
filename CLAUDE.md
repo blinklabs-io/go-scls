@@ -8,8 +8,8 @@ and workflow rules.
 | Metric | Value |
 |--------|-------|
 | Format version | SCLS v1 (CIP-0165), RAW chunks only |
-| Test functions | 65+ (100% passing), 4 godoc examples, 6 benchmarks |
-| Fuzz targets | 6 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`, `FuzzValidate`) |
+| Test functions | 65+ (100% passing), 4 godoc examples, 7 benchmarks |
+| Fuzz targets | 6 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`, `FuzzValidate`), all six in the nightly `fuzz.yml` matrix |
 | Conformance fixtures | 5: Haskell-gen `minimal-raw.scls` + 4 Rust-gen (`empty`, `multi-ns`, `multi-chunk`, `multi-ns-multi-chunk`); all pass VerifyFull, roots/digests pinned in `TestConformanceGolden` |
 | Proofs / lookup | `Open`/`Get` random-access, `Prove`/`VerifyProof` Merkle proofs, streaming `Lookup`/`LookupProof`; portable proofs via `Proof.MarshalBinary`/`UnmarshalProofBinary` |
 | Direct dependencies | `golang.org/x/crypto` only |
@@ -54,7 +54,10 @@ SCLS_CONFORMANCE_FILE=/path/to/ref.scls go test -run TestConformance -v .
 5. Changes to `decodeChunk`/`decodeManifest`/`readRecord` must keep
    `FuzzVerify` panic-free — attacker-controlled lengths must be bounds-
    checked before allocation or slicing (see `maxRecordSize`, capped
-   pre-allocations).
+   pre-allocations). The same applies to `cardano/cbor`: a declared
+   collection count is bounded only by the remaining input, so it may size a
+   loop but never an allocation. Clamp reservations to `maxPrealloc`; a
+   reservation that scales with the count is multiplied by `maxDepth`.
 6. `testdata/minimal-raw.scls` is a vendored third-party fixture
    (Apache-2.0, attribution in `testdata/README.md`) — regenerating or
    "fixing" it is never correct.

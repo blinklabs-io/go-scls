@@ -93,11 +93,11 @@ func (d *decoder) value(depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		count, err := d.collectionLength(length)
+		count, err := d.collectionLength(length, arrayItemMinSize)
 		if err != nil {
 			return nil, err
 		}
-		value := make(Array, 0, count)
+		value := make(Array, 0, min(count, maxPrealloc))
 		for range count {
 			item, err := d.value(depth + 1)
 			if err != nil {
@@ -111,11 +111,11 @@ func (d *decoder) value(depth int) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		count, err := d.collectionLength(length)
+		count, err := d.collectionLength(length, mapEntryMinSize)
 		if err != nil {
 			return nil, err
 		}
-		value := make(Map, 0, count)
+		value := make(Map, 0, min(count, maxPrealloc))
 		var previous []byte
 		for range count {
 			keyStart := d.offset
@@ -283,13 +283,25 @@ func (d *decoder) bytesSize(length int) ([]byte, error) {
 	return value, nil
 }
 
-func (d *decoder) collectionLength(length uint64) (int, error) {
+// Smallest encoded size of one collection element. Every CBOR item occupies
+// at least one byte, and a map entry is a key item followed by a value item.
+const (
+	arrayItemMinSize = 1
+	mapEntryMinSize  = 2
+)
+
+// collectionLength converts a declared element count to an int, rejecting any
+// count the remaining input cannot possibly satisfy.
+//
+// The returned count is still attacker-controlled up to the remaining input
+// length, so callers must not use it to size an allocation; see maxPrealloc.
+func (d *decoder) collectionLength(length uint64, minItemSize int) (int, error) {
 	if length > math.MaxInt {
 		return 0, d.syntax(errors.Join(ErrInvalid, fmt.Errorf("collection length %d exceeds input", length)))
 	}
 	// The math.MaxInt check above makes the conversion safe.
 	count := int(length) //nolint:gosec
-	if count > len(d.data)-d.offset {
+	if count > (len(d.data)-d.offset)/minItemSize {
 		return 0, d.syntax(errors.Join(ErrInvalid, fmt.Errorf("collection length %d exceeds input", length)))
 	}
 	return count, nil

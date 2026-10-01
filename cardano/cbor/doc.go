@@ -20,4 +20,10 @@
 // Map keys use RFC 8949's core deterministic encoding rule: bytewise
 // lexicographic order of their deterministic encodings. Floating-point values
 // are not part of the supported ledger-state subset.
+//
+// Decoding is bounded in memory: a declared array or map length is treated as
+// untrusted, so the decoder reserves a fixed small capacity and grows it from
+// the elements it actually decodes. Peak memory therefore tracks the length of
+// the input rather than the counts it declares, and callers bound a decode by
+// bounding the byte slice they pass in.
 package cbor
