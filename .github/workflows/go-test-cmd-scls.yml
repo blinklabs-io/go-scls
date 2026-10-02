@@ -1,5 +1,5 @@
 # Generated automatically by org-governance-bot. Do not edit manually.
-name: "Go checks (root module)"
+name: "Go checks (cmd/scls module)"
 
 on:
   pull_request:
@@ -13,8 +13,9 @@ jobs:
   orchestrate:
     uses: blinklabs-io/actions/.github/workflows/reuseable-go-test.yml@main
     with:
-      nilaway-include-pkgs: github.com/blinklabs-io/go-scls
+      nilaway-include-pkgs: github.com/blinklabs-io/go-scls/cmd/scls
       nilaway-version: latest
       run-golangci-lint: true
       run-nilaway: true
       test-flags: -race
+      working-directory: cmd/scls
