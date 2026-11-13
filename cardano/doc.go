@@ -17,4 +17,8 @@
 //
 // This package does not import the root scls package or gouroboros. Namespace
 // values remain caller-supplied CBOR bytes at the container boundary.
+//
+// Typed payload codecs (see TypedNamespacesV0) decode deterministic CBOR into
+// Go structs, validate each namespace's schema, and encode back to the same
+// bytes. Their errors wrap ErrPayload.
 package cardano

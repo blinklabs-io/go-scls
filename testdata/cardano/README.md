@@ -32,3 +32,10 @@ go run ./testdata/cardano/generate_scls.go
 The negative fixtures cover short and long keys, 95/97-byte BLS public-key
 errors, 47/49-byte proof-of-possession errors, map field order, duplicate map
 fields, and non-minimal CBOR.
+
+`generate.hs` also writes typed fixtures that exercise populated values
+(`*_populated`, `*_members`, `*_delegated`, `utxo_v0_*`, `gov_proposals_v0_*`
+with one file per governance action variant, and ledger-ordered `utxo` and
+proposal payloads) and `invalid_*.cbor` files that are deterministic CBOR but
+violate their namespace schema. The generator is a hand-written mirror of the
+encoders, so these files are not output of `cardano-cls` itself.

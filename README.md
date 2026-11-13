@@ -65,6 +65,29 @@ or `gouroboros` dependency to the root module. The root `scls` package
 continues to treat entry values as caller-supplied bytes and never re-encodes
 them.
 
+### Typed payloads
+
+Each version-0 namespace has a typed payload codec
+(`DecodeAccountState`/`EncodeAccountState`, `DecodeTxOut`, `DecodeNonces`,
+and so on, plus a `*PayloadCodec` implementing `PayloadCodec`).
+`entities/stake_pools/v0` keeps its own codec. `TypedNamespacesV0` pairs the
+registered key codecs with these payload codecs; `DefaultRegistry` still
+holds the generic deterministic-CBOR codecs, so existing callers keep
+receiving generic values.
+
+Decoders accept only deterministic CBOR and reject missing or unknown map
+fields, wrong hash sizes, out-of-range integers, invalid credential and
+variant tags, non-canonical set and map order, and trailing bytes. Errors wrap
+`ErrPayload`. Encoders validate the same rules and emit deterministic CBOR,
+sorting sets and maps themselves, so decode followed by encode reproduces the
+input bytes. Schemas follow `spec/namespaces/` at `cardano-cls` commit
+`a7ddf62e6291b297889e78b4df95e2fb605c312f`; only `v0` namespaces are
+supported, and a new schema version needs a new namespace name.
+`utxo/v0` and the `proposal_procedure` of `gov/proposals/v0` embed the
+ledger's own serialization, which is not deterministic CBOR; those items are
+decoded permissively and the original bytes are kept in a `Raw` field so
+re-encoding reproduces them (see `spec/RECONCILIATION.md` P3 and P7).
+
 ## CLI
 
 The `scls` command-line tool inspects and verifies SCLS files. Build it with

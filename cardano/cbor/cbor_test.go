@@ -257,3 +257,62 @@ func FuzzValidate(f *testing.F) {
 		}
 	})
 }
+
+func TestUnmarshalLedger(t *testing.T) {
+	t.Parallel()
+	// {2: 0, 1: 0} is out of deterministic order.
+	reversed := []byte{0xa2, 0x02, 0x00, 0x01, 0x00}
+	if _, err := Unmarshal(reversed); !errors.Is(err, ErrMapOrder) {
+		t.Fatalf("Unmarshal(reversed) error = %v, want ErrMapOrder", err)
+	}
+	value, err := UnmarshalLedger(reversed)
+	if err != nil {
+		t.Fatalf("UnmarshalLedger(reversed) error = %v", err)
+	}
+	want := Map{{Key: uint64(2), Value: uint64(0)}, {Key: uint64(1), Value: uint64(0)}}
+	if !reflect.DeepEqual(value, want) {
+		t.Fatalf("value = %#v, want %#v", value, want)
+	}
+	for name, data := range map[string][]byte{
+		"duplicate key":    {0xa2, 0x02, 0x00, 0x02, 0x01},
+		"non-adjacent dup": {0xa3, 0x02, 0x00, 0x01, 0x00, 0x02, 0x01},
+		"indefinite bytes": {0x5f, 0x41, 0x00, 0xff},
+		"unterminated":     {0x9f, 0x00},
+		"stray break":      {0x82, 0x00, 0xff},
+		"key then break":   {0xbf, 0x00, 0xff},
+		"indefinite dup":   {0xbf, 0x01, 0x00, 0x01, 0x00, 0xff},
+		"non-minimal":      {0x18, 0x00},
+		"trailing":         {0x00, 0x00},
+	} {
+		if _, err := UnmarshalLedger(data); err == nil {
+			t.Errorf("%s: UnmarshalLedger() error = nil", name)
+		}
+	}
+	if _, err := UnmarshalLedger([]byte{0xa2, 0x02, 0x00, 0x02, 0x01}); !errors.Is(err, ErrDuplicateMapKey) {
+		t.Fatalf("duplicate error = %v, want ErrDuplicateMapKey", err)
+	}
+	// The ledger encodes lists and maps longer than 23 elements with
+	// indefinite length; Unmarshal must still reject them.
+	nested := []byte{0x9f, 0x01, 0xbf, 0x02, 0x80, 0xff, 0xff}
+	if _, err := Unmarshal(nested); !errors.Is(err, ErrIndefinite) {
+		t.Fatalf("Unmarshal(indefinite) error = %v, want ErrIndefinite", err)
+	}
+	value, err = UnmarshalLedger(nested)
+	if err != nil {
+		t.Fatalf("UnmarshalLedger(indefinite) error = %v", err)
+	}
+	want2 := Array{uint64(1), Map{{Key: uint64(2), Value: Array{}}}}
+	if !reflect.DeepEqual(value, want2) {
+		t.Fatalf("value = %#v, want %#v", value, want2)
+	}
+}
+
+// Ledger keys are compared by decoded value: [0] encoded with definite and
+// indefinite length is the same key, and Marshal would reject the map.
+func TestUnmarshalLedgerDuplicateKeyAcrossEncodings(t *testing.T) {
+	t.Parallel()
+	data := []byte{0xa2, 0x81, 0x00, 0x00, 0x9f, 0x00, 0xff, 0x01}
+	if _, err := UnmarshalLedger(data); !errors.Is(err, ErrDuplicateMapKey) {
+		t.Fatalf("UnmarshalLedger(%x) error = %v, want ErrDuplicateMapKey", data, err)
+	}
+}
