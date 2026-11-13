@@ -306,3 +306,13 @@ func TestUnmarshalLedger(t *testing.T) {
 		t.Fatalf("value = %#v, want %#v", value, want2)
 	}
 }
+
+// Ledger keys are compared by decoded value: [0] encoded with definite and
+// indefinite length is the same key, and Marshal would reject the map.
+func TestUnmarshalLedgerDuplicateKeyAcrossEncodings(t *testing.T) {
+	t.Parallel()
+	data := []byte{0xa2, 0x81, 0x00, 0x00, 0x9f, 0x00, 0xff, 0x01}
+	if _, err := UnmarshalLedger(data); !errors.Is(err, ErrDuplicateMapKey) {
+		t.Fatalf("UnmarshalLedger(%x) error = %v, want ErrDuplicateMapKey", data, err)
+	}
+}

@@ -147,10 +147,17 @@ func (d *decoder) value(depth int) (any, error) {
 			}
 			keyBytes := d.data[keyStart:d.offset]
 			if seen != nil {
-				if _, dup := seen[string(keyBytes)]; dup {
+				// Ledger keys may use indefinite lengths, so equal keys can
+				// differ in their original bytes; compare deterministic
+				// encodings instead.
+				canonical, err := Marshal(key)
+				if err != nil {
+					return nil, &SyntaxError{Offset: keyStart, Err: err}
+				}
+				if _, dup := seen[string(canonical)]; dup {
 					return nil, &SyntaxError{Offset: keyStart, Err: ErrDuplicateMapKey}
 				}
-				seen[string(keyBytes)] = struct{}{}
+				seen[string(canonical)] = struct{}{}
 			} else if previous != nil {
 				switch compareKeys(previous, keyBytes) {
 				case 0:
