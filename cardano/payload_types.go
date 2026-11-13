@@ -386,12 +386,14 @@ type TxValue struct {
 type TxOutDatum struct {
 	// Hash is set for a datum hash.
 	Hash *Hash32
-	// Inline is the deterministic CBOR of an inline datum (Plutus data).
+	// Inline is the inline datum (Plutus data) exactly as the ledger
+	// serialized it. The bytes are opaque and may use indefinite lengths.
 	Inline []byte
 }
 
-// TxOutScript is a reference script. Script holds the deterministic CBOR of
-// a native script for Language 0 and the script bytes for Languages 1-3.
+// TxOutScript is a reference script. Script holds the native script CBOR
+// exactly as the ledger serialized it for Language 0, which may use
+// indefinite lengths, and the script bytes for Languages 1-3.
 type TxOutScript struct {
 	Language uint8
 	Script   []byte

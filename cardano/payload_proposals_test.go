@@ -184,14 +184,14 @@ func TestGovProposalInfoLayout(t *testing.T) {
 	value := cardano.GovProposal{Procedure: cardano.ProposalProcedure{
 		ReturnAddress: rewardAccount(0xe0),
 		Action:        cardano.GovAction{Kind: cardano.GovInfo},
-		Anchor:        cardano.Anchor{Hash: []byte{}},
+		Anchor:        cardano.Anchor{Hash: seq(0, 32)},
 	}}
 	encoded, err := cardano.EncodeGovProposal(value)
 	if err != nil {
 		t.Fatal(err)
 	}
 	procedure := marshalOrFatal(t, cbor.Array{
-		uint64(0), rewardAccount(0xe0), cbor.Array{uint64(6)}, cbor.Array{"", []byte{}},
+		uint64(0), rewardAccount(0xe0), cbor.Array{uint64(6)}, cbor.Array{"", seq(0, 32)},
 	})
 	if !bytes.Contains(encoded, append([]byte{0x58, byte(len(procedure))}, procedure...)) {
 		t.Fatalf("encoding %x does not embed procedure %x as a byte string", encoded, procedure)
@@ -227,7 +227,7 @@ func proposalWithProcedure(t *testing.T, procedure []byte) []byte {
 
 func TestGovProposalPreservesLedgerOrderedProcedure(t *testing.T) {
 	t.Parallel()
-	anchor := cbor.Array{"u", []byte{1}}
+	anchor := cbor.Array{"u", seq(1, 32)}
 	script := cbor.Array{uint64(1), seq(0, 28)}
 	key := cbor.Array{uint64(0), seq(0, 28)}
 	// Ledger order puts script credentials before key credentials, the
@@ -283,7 +283,7 @@ func marshalOrFatalUnsorted(t *testing.T, header byte, items ...[]byte) []byte {
 
 func TestGovProposalRejectsInvalid(t *testing.T) {
 	t.Parallel()
-	anchor := cbor.Array{"u", []byte{1}}
+	anchor := cbor.Array{"u", seq(1, 32)}
 	addr := rewardAccount(0xe0)
 	procedure := func(action any) []byte {
 		return marshalOrFatal(t, cbor.Array{uint64(0), addr, action, anchor})
@@ -539,7 +539,7 @@ func TestGovProposalAcceptsLedgerIndefiniteLengths(t *testing.T) {
 		marshalOrFatal(t, uint64(5)),
 		marshalOrFatal(t, rewardAccount(0xe0)),
 		action,
-		marshalOrFatal(t, cbor.Array{"u", []byte{1}}),
+		marshalOrFatal(t, cbor.Array{"u", seq(1, 32)}),
 	)
 	data := proposalWithProcedure(t, procedure)
 	decoded, err := cardano.DecodeGovProposal(data)
@@ -563,7 +563,7 @@ func TestGovProposalAcceptsLedgerIndefiniteLengths(t *testing.T) {
 		marshalOrFatal(t, uint64(5)),
 		marshalOrFatal(t, rewardAccount(0xe0)),
 		treasury,
-		marshalOrFatal(t, cbor.Array{"u", []byte{1}}),
+		marshalOrFatal(t, cbor.Array{"u", seq(1, 32)}),
 	)
 	decoded, err = cardano.DecodeGovProposal(proposalWithProcedure(t, procedure))
 	if err != nil {
@@ -571,5 +571,88 @@ func TestGovProposalAcceptsLedgerIndefiniteLengths(t *testing.T) {
 	}
 	if got := len(decoded.Procedure.Action.Withdrawals); got != 24 {
 		t.Fatalf("withdrawals = %d, want 24", got)
+	}
+}
+
+// The ledger hashes a native script over its original bytes (Timelock is
+// MemoBytes), so normalizing an indefinite-length child list would change
+// the script hash consumers compute from TxOutScript.Script.
+func TestTxOutPreservesNativeScriptBytes(t *testing.T) {
+	t.Parallel()
+	child := marshalOrFatal(t, cbor.Array{uint64(0), seq(0, 28)})
+	native := marshalOrFatalUnsorted(t, 0x82, []byte{0x01}, indefinite(0x9f, child))
+	scriptRef := marshalOrFatalUnsorted(t, 0x82, []byte{0x00}, native)
+	inner := marshalOrFatal(t, cbor.Map{
+		{Key: uint64(0), Value: seq(1, 29)},
+		{Key: uint64(1), Value: uint64(1)},
+		{Key: uint64(3), Value: cbor.Tag{Number: 24, Value: scriptRef}},
+	})
+	decoded, err := cardano.DecodeTxOut(marshalOrFatal(t, inner))
+	if err != nil {
+		t.Fatalf("DecodeTxOut() error = %v", err)
+	}
+	if decoded.Script == nil || !bytes.Equal(decoded.Script.Script, native) {
+		t.Fatalf("Script = %#v, want native script bytes %x", decoded.Script, native)
+	}
+	decoded.Raw = nil
+	encoded, err := cardano.EncodeTxOut(decoded)
+	if err != nil {
+		t.Fatalf("EncodeTxOut(Raw cleared) error = %v", err)
+	}
+	if !bytes.Equal(encoded, marshalOrFatal(t, inner)) {
+		t.Fatalf("EncodeTxOut(Raw cleared) = %x, want %x", encoded, marshalOrFatal(t, inner))
+	}
+}
+
+// Every anchor is a Blake2b-256 hash: the ledger's Anchor holds a
+// SafeHash AnchorData, whose decoder requires 32 bytes.
+func TestAnchorHashMustBe32Bytes(t *testing.T) {
+	t.Parallel()
+	for _, size := range []int{0, 3, 31, 33} {
+		anchor := cardano.Anchor{URL: "u", Hash: seq(0, size)}
+		constitution, err := cbor.Marshal(cbor.Array{cbor.Array{"u", seq(0, size)}, nil})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cardano.DecodeConstitution(constitution); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("DecodeConstitution(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
+		if _, err := cardano.EncodeConstitution(cardano.Constitution{Anchor: anchor}); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("EncodeConstitution(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
+		if _, err := cardano.EncodeDRepState(cardano.DRepState{Anchor: &anchor}); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("EncodeDRepState(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
+		committee := cardano.CommitteeState{{Authorization: cardano.CommitteeAuthorization{
+			Kind: cardano.CommitteeResigned, Anchor: &anchor,
+		}}}
+		if _, err := cardano.EncodeCommitteeState(committee); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("EncodeCommitteeState(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
+		proposal := cardano.GovProposal{Procedure: cardano.ProposalProcedure{
+			ReturnAddress: rewardAccount(0xe0),
+			Action:        cardano.GovAction{Kind: cardano.GovInfo},
+			Anchor:        anchor,
+		}}
+		if _, err := cardano.EncodeGovProposal(proposal); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("EncodeGovProposal(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
+		proposal.Procedure.Anchor.Hash = seq(0, 32)
+		valid, err := cardano.EncodeGovProposal(proposal)
+		if err != nil {
+			t.Fatalf("EncodeGovProposal(32-byte hash) error = %v", err)
+		}
+		procedure := func(hash []byte) []byte {
+			return marshalOrFatal(t, marshalOrFatal(t, cbor.Array{
+				uint64(0), rewardAccount(0xe0), cbor.Array{uint64(6)}, cbor.Array{"u", hash},
+			}))
+		}
+		invalid := bytes.Replace(valid, procedure(seq(0, 32)), procedure(seq(0, size)), 1)
+		if bytes.Equal(invalid, valid) {
+			t.Fatalf("encoding %x does not embed the expected procedure", valid)
+		}
+		if _, err := cardano.DecodeGovProposal(invalid); !errors.Is(err, cardano.ErrPayload) {
+			t.Errorf("DecodeGovProposal(%d-byte hash) error = %v, want ErrPayload", size, err)
+		}
 	}
 }

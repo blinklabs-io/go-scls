@@ -353,7 +353,7 @@ func TestCommitteeStateCanonicalOrder(t *testing.T) {
 	high := cardano.Credential{Kind: cardano.CredentialScriptHash, Hash: hash28From(1)}
 	value := cardano.CommitteeState{
 		{Cold: high, Authorization: cardano.CommitteeAuthorization{
-			Kind: cardano.CommitteeResigned, Anchor: &cardano.Anchor{URL: "u", Hash: []byte{1}},
+			Kind: cardano.CommitteeResigned, Anchor: &cardano.Anchor{URL: "u", Hash: seq(1, 32)},
 		}},
 		{Cold: low, Authorization: cardano.CommitteeAuthorization{
 			Kind: cardano.CommitteeHotCredential, HotCredential: high,

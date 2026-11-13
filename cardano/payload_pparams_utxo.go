@@ -551,11 +551,14 @@ func decodeScriptRef(value any) (*TxOutScript, error) {
 		if err := validateNativeScript(items[1], 0); err != nil {
 			return nil, fmt.Errorf("native script: %w", err)
 		}
-		encoded, err := cbor.Marshal(items[1])
-		if err != nil {
-			return nil, err
+		// The ledger hashes a native script over its original bytes, so keep
+		// them. The pair header and the language 0 are one byte each (minimal
+		// arguments are enforced), and an indefinite pair ends with a break.
+		end := len(data)
+		if data[0] == 0x9f {
+			end--
 		}
-		return &TxOutScript{Language: 0, Script: encoded}, nil
+		return &TxOutScript{Language: 0, Script: bytes.Clone(data[2:end])}, nil
 	}
 	body, err := decodeBytes(items[1], -1)
 	if err != nil {
@@ -737,7 +740,8 @@ func encodeScriptRef(value TxOutScript) (any, error) {
 		if err := validateNativeScript(native, 0); err != nil {
 			return nil, fmt.Errorf("native script: %w", err)
 		}
-		body = native
+		encoded := append([]byte{0x82, 0x00}, value.Script...)
+		return cbor.Tag{Number: 24, Value: encoded}, nil
 	case 1, 2, 3:
 		body = bytes.Clone(value.Script)
 	default:

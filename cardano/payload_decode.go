@@ -25,6 +25,7 @@ import (
 
 const (
 	maxAnchorURL     = 128
+	anchorHashSize   = 32
 	maxAssetNameSize = 32
 	rewardKeySize    = 29
 )
@@ -38,7 +39,7 @@ func decodeAnchor(value any) (Anchor, error) {
 	if !ok || len(url) > maxAnchorURL {
 		return Anchor{}, fmt.Errorf("anchor URL must be text of at most %d bytes", maxAnchorURL)
 	}
-	hash, err := decodeBytes(items[1], -1)
+	hash, err := decodeBytes(items[1], anchorHashSize)
 	if err != nil {
 		return Anchor{}, fmt.Errorf("anchor hash: %w", err)
 	}
@@ -48,6 +49,9 @@ func decodeAnchor(value any) (Anchor, error) {
 func encodeAnchor(value Anchor) (cbor.Array, error) {
 	if len(value.URL) > maxAnchorURL {
 		return nil, fmt.Errorf("anchor URL has %d bytes, maximum is %d", len(value.URL), maxAnchorURL)
+	}
+	if len(value.Hash) != anchorHashSize {
+		return nil, fmt.Errorf("anchor hash has %d bytes, want %d", len(value.Hash), anchorHashSize)
 	}
 	return cbor.Array{value.URL, bytes.Clone(value.Hash)}, nil
 }
