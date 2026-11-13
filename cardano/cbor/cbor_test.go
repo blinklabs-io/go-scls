@@ -257,3 +257,34 @@ func FuzzValidate(f *testing.F) {
 		}
 	})
 }
+
+func TestUnmarshalUnordered(t *testing.T) {
+	t.Parallel()
+	// {2: 0, 1: 0} is out of deterministic order.
+	reversed := []byte{0xa2, 0x02, 0x00, 0x01, 0x00}
+	if _, err := Unmarshal(reversed); !errors.Is(err, ErrMapOrder) {
+		t.Fatalf("Unmarshal(reversed) error = %v, want ErrMapOrder", err)
+	}
+	value, err := UnmarshalUnordered(reversed)
+	if err != nil {
+		t.Fatalf("UnmarshalUnordered(reversed) error = %v", err)
+	}
+	want := Map{{Key: uint64(2), Value: uint64(0)}, {Key: uint64(1), Value: uint64(0)}}
+	if !reflect.DeepEqual(value, want) {
+		t.Fatalf("value = %#v, want %#v", value, want)
+	}
+	for name, data := range map[string][]byte{
+		"duplicate key":    {0xa2, 0x02, 0x00, 0x02, 0x01},
+		"non-adjacent dup": {0xa3, 0x02, 0x00, 0x01, 0x00, 0x02, 0x01},
+		"indefinite":       {0x9f, 0xff},
+		"non-minimal":      {0x18, 0x00},
+		"trailing":         {0x00, 0x00},
+	} {
+		if _, err := UnmarshalUnordered(data); err == nil {
+			t.Errorf("%s: UnmarshalUnordered() error = nil", name)
+		}
+	}
+	if _, err := UnmarshalUnordered([]byte{0xa2, 0x02, 0x00, 0x02, 0x01}); !errors.Is(err, ErrDuplicateMapKey) {
+		t.Fatalf("duplicate error = %v, want ErrDuplicateMapKey", err)
+	}
+}

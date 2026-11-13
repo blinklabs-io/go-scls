@@ -35,6 +35,23 @@ func Unmarshal(data []byte) (any, error) {
 	return value, nil
 }
 
+// UnmarshalUnordered decodes one CBOR item like Unmarshal but accepts map
+// keys in any order. It still rejects duplicate keys, indefinite lengths and
+// non-minimal arguments. It exists for payloads that embed ledger-serialized
+// CBOR, whose map and set order follows the ledger's key ordering rather than
+// RFC 8949 section 4.2.1.
+func UnmarshalUnordered(data []byte) (any, error) {
+	d := decoder{data: data, unordered: true}
+	value, err := d.value(0)
+	if err != nil {
+		return nil, err
+	}
+	if d.offset != len(data) {
+		return nil, d.syntax(ErrTrailingData)
+	}
+	return value, nil
+}
+
 // Validate verifies that data contains exactly one supported deterministic
 // CBOR item.
 func Validate(data []byte) error {
@@ -43,8 +60,9 @@ func Validate(data []byte) error {
 }
 
 type decoder struct {
-	data   []byte
-	offset int
+	data      []byte
+	offset    int
+	unordered bool
 }
 
 func (d *decoder) value(depth int) (any, error) {
@@ -117,6 +135,10 @@ func (d *decoder) value(depth int) (any, error) {
 		}
 		value := make(Map, 0, min(count, maxPrealloc))
 		var previous []byte
+		var seen map[string]struct{}
+		if d.unordered {
+			seen = make(map[string]struct{}, min(count, maxPrealloc))
+		}
 		for range count {
 			keyStart := d.offset
 			key, err := d.value(depth + 1)
@@ -124,7 +146,12 @@ func (d *decoder) value(depth int) (any, error) {
 				return nil, err
 			}
 			keyBytes := d.data[keyStart:d.offset]
-			if previous != nil {
+			if seen != nil {
+				if _, dup := seen[string(keyBytes)]; dup {
+					return nil, &SyntaxError{Offset: keyStart, Err: ErrDuplicateMapKey}
+				}
+				seen[string(keyBytes)] = struct{}{}
+			} else if previous != nil {
 				switch compareKeys(previous, keyBytes) {
 				case 0:
 					return nil, &SyntaxError{Offset: keyStart, Err: ErrDuplicateMapKey}

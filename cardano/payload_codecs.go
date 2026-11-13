@@ -344,3 +344,30 @@ func (TxOutPayloadCodec) EncodePayload(value any) ([]byte, error) {
 	}
 	return EncodeTxOut(typed)
 }
+
+// DecodeGovProposal decodes a gov/proposals/v0 payload.
+func DecodeGovProposal(data []byte) (GovProposal, error) {
+	return decodePayloadWith("gov/proposals/v0", data, decodeGovProposal)
+}
+
+// EncodeGovProposal encodes a gov/proposals/v0 payload as deterministic CBOR.
+func EncodeGovProposal(value GovProposal) ([]byte, error) {
+	return encodePayloadWith("gov/proposals/v0", value, encodeGovProposal)
+}
+
+// GovProposalPayloadCodec is the typed payload codec for gov/proposals/v0.
+type GovProposalPayloadCodec struct{}
+
+// DecodePayload decodes a GovProposal.
+func (GovProposalPayloadCodec) DecodePayload(data []byte) (any, error) {
+	return DecodeGovProposal(data)
+}
+
+// EncodePayload encodes a GovProposal or *GovProposal.
+func (GovProposalPayloadCodec) EncodePayload(value any) ([]byte, error) {
+	typed, ok := payloadValue[GovProposal](value)
+	if !ok {
+		return nil, fmt.Errorf("%w: gov/proposals/v0: Go type %T", ErrPayload, value)
+	}
+	return EncodeGovProposal(typed)
+}

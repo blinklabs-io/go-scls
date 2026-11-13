@@ -215,6 +215,140 @@ type BlocksMade uint64
 // is positive.
 type VRFKeyHashCount uint64
 
+// GovActionKind identifies a governance action variant.
+type GovActionKind uint8
+
+const (
+	// GovParameterChange updates protocol parameters.
+	GovParameterChange GovActionKind = iota
+	// GovHardForkInitiation proposes a protocol version.
+	GovHardForkInitiation
+	// GovTreasuryWithdrawals withdraws from the treasury.
+	GovTreasuryWithdrawals
+	// GovNoConfidence is a motion of no confidence.
+	GovNoConfidence
+	// GovUpdateCommittee changes committee membership and threshold.
+	GovUpdateCommittee
+	// GovNewConstitution replaces the constitution.
+	GovNewConstitution
+	// GovInfo is an information-only action.
+	GovInfo
+)
+
+// Vote is a governance vote: 0 no, 1 yes, 2 abstain.
+type Vote uint8
+
+const (
+	// VoteNo is a no vote.
+	VoteNo Vote = iota
+	// VoteYes is a yes vote.
+	VoteYes
+	// VoteAbstain is an abstention.
+	VoteAbstain
+)
+
+// CredentialVote is a vote cast by a DRep or committee credential.
+type CredentialVote struct {
+	Credential Credential
+	Vote       Vote
+}
+
+// PoolVote is a vote cast by a stake pool.
+type PoolVote struct {
+	Pool Hash28
+	Vote Vote
+}
+
+// Withdrawal is a treasury withdrawal to a 29-byte reward account.
+type Withdrawal struct {
+	Account []byte
+	Amount  uint64
+}
+
+// ExUnitPrices holds the prices of memory and steps.
+type ExUnitPrices struct {
+	Memory Rational
+	Step   Rational
+}
+
+// ProtocolParametersUpdate is the partial parameter update of a parameter
+// change action. A nil field is absent from the update. The protocol version
+// is never part of an update.
+type ProtocolParametersUpdate struct {
+	MinFeeA                    *uint64
+	MinFeeB                    *uint64
+	MaxBlockSize               *uint32
+	MaxTxSize                  *uint32
+	MaxBlockHeaderSize         *uint16
+	KeyDeposit                 *uint64
+	PoolDeposit                *uint64
+	MaxEpoch                   *uint32
+	NOpt                       *uint16
+	A0                         *Rational
+	Rho                        *UnitInterval
+	Tau                        *UnitInterval
+	MinPoolCost                *uint64
+	AdaPerUTxOByte             *uint64
+	CostModels                 *map[uint8][]int64
+	ExUnitPrices               *ExUnitPrices
+	MaxTxExUnits               *ExUnits
+	MaxBlockExUnits            *ExUnits
+	MaxValueSize               *uint32
+	CollateralPercentage       *uint16
+	MaxCollateralInputs        *uint16
+	PoolVotingThresholds       *[5]UnitInterval
+	DRepVotingThresholds       *[10]UnitInterval
+	MinCommitteeSize           *uint16
+	CommitteeTermLimit         *uint32
+	GovActionValidity          *uint32
+	GovActionDeposit           *uint64
+	DRepDeposit                *uint64
+	DRepInactivity             *uint32
+	MinFeeRefScriptCostPerByte *Rational
+}
+
+// GovAction is a governance action. Which fields are used depends on Kind:
+// Purpose (all but treasury withdrawals and info), ParamUpdate and
+// PolicyHash (parameter change), PolicyHash and Withdrawals (treasury),
+// ProtocolVersion (hard fork), Removed, Added and Threshold (committee
+// update), Constitution (new constitution). Unused fields must be zero.
+type GovAction struct {
+	Kind            GovActionKind
+	Purpose         *GovActionID
+	ParamUpdate     ProtocolParametersUpdate
+	PolicyHash      *Hash28
+	ProtocolVersion ProtocolVersion
+	Withdrawals     []Withdrawal
+	Removed         []Credential
+	Added           []CommitteeMember
+	Threshold       UnitInterval
+	Constitution    Constitution
+}
+
+// ProposalProcedure is the proposal embedded in a gov/proposals/v0 payload.
+// The embedded bytes are ledger-serialized CBOR, whose set and map order may
+// differ from deterministic order. Raw holds the original bytes when they
+// differ from this package's encoding of the fields; Encode emits Raw when it
+// is non-nil and still decodes to the same fields.
+type ProposalProcedure struct {
+	Deposit       uint64
+	ReturnAddress []byte
+	Action        GovAction
+	Anchor        Anchor
+	Raw           []byte
+}
+
+// GovProposal is the gov/proposals/v0 payload.
+type GovProposal struct {
+	Order          uint64
+	DRepVotes      []CredentialVote
+	ProposedIn     uint64
+	ExpiresAfter   uint64
+	CommitteeVotes []CredentialVote
+	StakePoolVotes []PoolVote
+	Procedure      ProposalProcedure
+}
+
 // TxOutFormat selects the transaction-output encoding.
 type TxOutFormat uint8
 
@@ -273,6 +407,11 @@ type TxOut struct {
 	Datum *TxOutDatum
 	// Script is nil when absent and is valid only in the Babbage form.
 	Script *TxOutScript
+	// Raw holds the embedded ledger-serialized tx_out when it differs from
+	// this package's encoding of the fields (ledger map order need not be
+	// deterministic order). Encode emits Raw when it is non-nil and still
+	// decodes to the same fields.
+	Raw []byte
 }
 
 func decodePayloadWith[T any](

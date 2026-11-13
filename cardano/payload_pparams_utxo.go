@@ -164,6 +164,17 @@ func decodeParam(field any, raw any) error {
 		if *target.step, err = decodeRational(items[1]); err != nil {
 			return fmt.Errorf("step price: %w", err)
 		}
+	case *ExUnitPrices:
+		items, err := decodePair(raw)
+		if err != nil {
+			return err
+		}
+		if target.Memory, err = decodeRational(items[0]); err != nil {
+			return fmt.Errorf("memory price: %w", err)
+		}
+		if target.Step, err = decodeRational(items[1]); err != nil {
+			return fmt.Errorf("step price: %w", err)
+		}
 	case *ExUnits:
 		items, err := decodePair(raw)
 		if err != nil {
@@ -304,6 +315,16 @@ func encodeParam(field any) (any, error) {
 			return nil, fmt.Errorf("step price: %w", err)
 		}
 		return cbor.Array{memory, step}, nil
+	case *ExUnitPrices:
+		memory, err := encodeRational(source.Memory)
+		if err != nil {
+			return nil, fmt.Errorf("memory price: %w", err)
+		}
+		step, err := encodeRational(source.Step)
+		if err != nil {
+			return nil, fmt.Errorf("step price: %w", err)
+		}
+		return cbor.Array{memory, step}, nil
 	case *ExUnits:
 		return cbor.Array{source.Memory, source.Steps}, nil
 	case *[5]UnitInterval:
@@ -334,18 +355,30 @@ func decodeTxOut(value any) (TxOut, error) {
 	if !ok {
 		return TxOut{}, errors.New("payload must be a byte string holding a tx_out")
 	}
-	decoded, err := cbor.Unmarshal(inner)
+	decoded, err := cbor.UnmarshalUnordered(inner)
 	if err != nil {
 		return TxOut{}, fmt.Errorf("embedded tx_out: %w", err)
 	}
+	var result TxOut
 	switch decoded := decoded.(type) {
 	case cbor.Array:
-		return decodeShelleyTxOut(decoded)
+		result, err = decodeShelleyTxOut(decoded)
 	case cbor.Map:
-		return decodeBabbageTxOut(decoded)
+		result, err = decodeBabbageTxOut(decoded)
 	default:
-		return TxOut{}, errors.New("tx_out must be an array or a map")
+		err = errors.New("tx_out must be an array or a map")
 	}
+	if err != nil {
+		return TxOut{}, err
+	}
+	canonical, err := encodeTxOutFields(result)
+	if err != nil {
+		return TxOut{}, err
+	}
+	if !bytes.Equal(canonical, inner) {
+		result.Raw = bytes.Clone(inner)
+	}
+	return result, nil
 }
 
 func decodeShelleyTxOut(items cbor.Array) (TxOut, error) {
@@ -482,8 +515,9 @@ func decodeDatumOption(value any) (*TxOutDatum, error) {
 	}
 }
 
-// decodeEmbeddedCBOR reads tag 24 around a byte string holding one
-// deterministic CBOR item and returns that byte string.
+// decodeEmbeddedCBOR reads tag 24 around a byte string and returns that byte
+// string unvalidated: Plutus data and scripts keep the exact bytes the ledger
+// stored, which may use indefinite lengths.
 func decodeEmbeddedCBOR(value any) ([]byte, error) {
 	tag, ok := value.(cbor.Tag)
 	if !ok || tag.Number != 24 {
@@ -491,9 +525,6 @@ func decodeEmbeddedCBOR(value any) ([]byte, error) {
 	}
 	data, err := decodeBytes(tag.Value, -1)
 	if err != nil {
-		return nil, err
-	}
-	if err := cbor.Validate(data); err != nil {
 		return nil, err
 	}
 	return data, nil
@@ -504,7 +535,7 @@ func decodeScriptRef(value any) (*TxOutScript, error) {
 	if err != nil {
 		return nil, err
 	}
-	script, err := cbor.Unmarshal(data)
+	script, err := cbor.UnmarshalUnordered(data)
 	if err != nil {
 		return nil, err
 	}
@@ -590,6 +621,29 @@ func validateNativeScripts(value any, depth int) error {
 }
 
 func encodeTxOut(value TxOut) (any, error) {
+	canonical, err := encodeTxOutFields(value)
+	if err != nil {
+		return nil, err
+	}
+	if value.Raw == nil {
+		return canonical, nil
+	}
+	decoded, err := decodeTxOut(value.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("raw tx_out: %w", err)
+	}
+	decoded.Raw = nil
+	again, err := encodeTxOutFields(decoded)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(again, canonical) {
+		return nil, errors.New("raw tx_out does not match the tx_out fields")
+	}
+	return bytes.Clone(value.Raw), nil
+}
+
+func encodeTxOutFields(value TxOut) ([]byte, error) {
 	txValue, err := encodeTxValue(value.Value)
 	if err != nil {
 		return nil, fmt.Errorf("value: %w", err)
@@ -663,8 +717,8 @@ func encodeDatumOption(value TxOutDatum) (any, error) {
 	case value.Hash != nil && value.Inline == nil:
 		return cbor.Array{uint64(0), bytes.Clone(value.Hash[:])}, nil
 	case value.Hash == nil && value.Inline != nil:
-		if err := cbor.Validate(value.Inline); err != nil {
-			return nil, fmt.Errorf("inline datum: %w", err)
+		if len(value.Inline) == 0 {
+			return nil, errors.New("inline datum must not be empty")
 		}
 		return cbor.Array{uint64(1), cbor.Tag{Number: 24, Value: bytes.Clone(value.Inline)}}, nil
 	default:
@@ -676,7 +730,7 @@ func encodeScriptRef(value TxOutScript) (any, error) {
 	var body any
 	switch value.Language {
 	case 0:
-		native, err := cbor.Unmarshal(value.Script)
+		native, err := cbor.UnmarshalUnordered(value.Script)
 		if err != nil {
 			return nil, fmt.Errorf("native script: %w", err)
 		}

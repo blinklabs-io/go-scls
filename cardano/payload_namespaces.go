@@ -18,8 +18,6 @@ package cardano
 // and entities/stake_pools/v0 with typed payload codecs in place of the
 // generic deterministic-CBOR codec. They are not registered: DefaultRegistry
 // keeps the generic codecs for callers that depend on generic values.
-// gov/proposals/v0 is absent because it has no typed codec yet and keeps the
-// generic one.
 var TypedNamespacesV0 = []Namespace{
 	typedNamespace(BlocksV0, BlocksMadePayloadCodec{}),
 	typedNamespace(UTxOV0, TxOutPayloadCodec{}),
@@ -31,6 +29,7 @@ var TypedNamespacesV0 = []Namespace{
 	typedNamespace(GovCommitteeV0, GovCommitteePayloadCodec{}),
 	typedNamespace(GovConstitutionV0, ConstitutionPayloadCodec{}),
 	typedNamespace(GovPParamsV0, ProtocolParametersPayloadCodec{}),
+	typedNamespace(GovProposalsV0, GovProposalPayloadCodec{}),
 	typedNamespace(GovProposalsRootsV0, GovProposalRootPayloadCodec{}),
 	typedNamespace(NoncesV0, NoncesPayloadCodec{}),
 	typedNamespace(SnapshotsMarkV0, SnapshotPayloadCodec{}),

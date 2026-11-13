@@ -125,6 +125,19 @@ func TestTypedPayloadsMatchHaskellFixtures(t *testing.T) {
 				Address: seq(0xe0, 29),
 			},
 		},
+		{
+			"proposal", "gov_proposals_v0", cardano.GovProposalPayloadCodec{},
+			cardano.GovProposal{
+				DRepVotes:      []cardano.CredentialVote{},
+				CommitteeVotes: []cardano.CredentialVote{},
+				StakePoolVotes: []cardano.PoolVote{},
+				Procedure: cardano.ProposalProcedure{
+					ReturnAddress: seq(0xf0, 29),
+					Action:        cardano.GovAction{Kind: cardano.GovInfo},
+					Anchor:        cardano.Anchor{URL: "", Hash: seq(0x10, 32)},
+				},
+			},
+		},
 		{"nonces", "nonces_v0", cardano.NoncesPayloadCodec{}, neutralNonces()},
 		{
 			"mark", "snapshots_mark_v0", cardano.SnapshotPayloadCodec{},
@@ -163,8 +176,8 @@ func TestTypedPayloadsMatchHaskellFixtures(t *testing.T) {
 
 func TestTypedNamespacesMatchRegistry(t *testing.T) {
 	t.Parallel()
-	if len(cardano.TypedNamespacesV0) != 15 {
-		t.Fatalf("TypedNamespacesV0 length = %d, want 15", len(cardano.TypedNamespacesV0))
+	if len(cardano.TypedNamespacesV0) != 16 {
+		t.Fatalf("TypedNamespacesV0 length = %d, want 16", len(cardano.TypedNamespacesV0))
 	}
 	for _, typed := range cardano.TypedNamespacesV0 {
 		t.Run(typed.Metadata.Name, func(t *testing.T) {
@@ -364,8 +377,8 @@ func TestCommitteeStateCanonicalOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := encoded[len(encoded)-3:]; !bytes.Equal(got, []byte{0x82, 0x01, 0xf6}) {
-		t.Fatalf("resignation without anchor ends %x, want 8201f6", got)
+	if !bytes.HasSuffix(encoded, []byte{0x82, 0x01, 0xf6}) {
+		t.Fatalf("resignation without anchor ends in %x, want 8201f6", encoded)
 	}
 
 	dup := cardano.CommitteeState{value[1], value[1]}
