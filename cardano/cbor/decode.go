@@ -35,13 +35,15 @@ func Unmarshal(data []byte) (any, error) {
 	return value, nil
 }
 
-// UnmarshalUnordered decodes one CBOR item like Unmarshal but accepts map
-// keys in any order. It still rejects duplicate keys, indefinite lengths and
-// non-minimal arguments. It exists for payloads that embed ledger-serialized
-// CBOR, whose map and set order follows the ledger's key ordering rather than
-// RFC 8949 section 4.2.1.
-func UnmarshalUnordered(data []byte) (any, error) {
-	d := decoder{data: data, unordered: true}
+// UnmarshalLedger decodes one CBOR item serialized by the Cardano ledger
+// (cardano-ledger-binary). Unlike Unmarshal it accepts map keys in any order,
+// because the ledger orders maps and sets by its own key ordering rather than
+// RFC 8949 section 4.2.1, and it accepts indefinite-length arrays and maps,
+// because the ledger encodes every list, set and map with more than 23
+// elements that way. It still rejects duplicate map keys, indefinite-length
+// byte and text strings, and non-minimal arguments.
+func UnmarshalLedger(data []byte) (any, error) {
+	d := decoder{data: data, ledger: true}
 	value, err := d.value(0)
 	if err != nil {
 		return nil, err
@@ -60,9 +62,9 @@ func Validate(data []byte) error {
 }
 
 type decoder struct {
-	data      []byte
-	offset    int
-	unordered bool
+	data   []byte
+	offset int
+	ledger bool
 }
 
 func (d *decoder) value(depth int) (any, error) {
@@ -107,16 +109,15 @@ func (d *decoder) value(depth int) (any, error) {
 		}
 		return string(value), nil
 	case 4:
-		length, err := d.argument(additional, start)
+		count, err := d.itemCount(additional, start, arrayItemMinSize)
 		if err != nil {
 			return nil, err
 		}
-		count, err := d.collectionLength(length, arrayItemMinSize)
-		if err != nil {
-			return nil, err
-		}
-		value := make(Array, 0, min(count, maxPrealloc))
-		for range count {
+		value := make(Array, 0, min(max(count, 0), maxPrealloc))
+		for i := 0; count < 0 || i < count; i++ {
+			if count < 0 && d.atBreak() {
+				break
+			}
 			item, err := d.value(depth + 1)
 			if err != nil {
 				return nil, err
@@ -125,21 +126,20 @@ func (d *decoder) value(depth int) (any, error) {
 		}
 		return value, nil
 	case 5:
-		length, err := d.argument(additional, start)
+		count, err := d.itemCount(additional, start, mapEntryMinSize)
 		if err != nil {
 			return nil, err
 		}
-		count, err := d.collectionLength(length, mapEntryMinSize)
-		if err != nil {
-			return nil, err
-		}
-		value := make(Map, 0, min(count, maxPrealloc))
+		value := make(Map, 0, min(max(count, 0), maxPrealloc))
 		var previous []byte
 		var seen map[string]struct{}
-		if d.unordered {
-			seen = make(map[string]struct{}, min(count, maxPrealloc))
+		if d.ledger {
+			seen = make(map[string]struct{}, min(max(count, 0), maxPrealloc))
 		}
-		for range count {
+		for i := 0; count < 0 || i < count; i++ {
+			if count < 0 && d.atBreak() {
+				break
+			}
 			keyStart := d.offset
 			key, err := d.value(depth + 1)
 			if err != nil {
@@ -322,6 +322,30 @@ const (
 //
 // The returned count is still attacker-controlled up to the remaining input
 // length, so callers must not use it to size an allocation; see maxPrealloc.
+// itemCount reads an array or map header. It returns -1 for an
+// indefinite-length header, which only the ledger decoder accepts; the
+// caller then reads items until atBreak. Every item consumes at least one
+// byte, so that loop is bounded by the input.
+func (d *decoder) itemCount(additional byte, start int, minItemSize int) (int, error) {
+	if additional == 31 && d.ledger {
+		return -1, nil
+	}
+	length, err := d.argument(additional, start)
+	if err != nil {
+		return 0, err
+	}
+	return d.collectionLength(length, minItemSize)
+}
+
+// atBreak consumes the break byte that ends an indefinite-length item.
+func (d *decoder) atBreak() bool {
+	if d.offset < len(d.data) && d.data[d.offset] == 0xff {
+		d.offset++
+		return true
+	}
+	return false
+}
+
 func (d *decoder) collectionLength(length uint64, minItemSize int) (int, error) {
 	if length > math.MaxInt {
 		return 0, d.syntax(errors.Join(ErrInvalid, fmt.Errorf("collection length %d exceeds input", length)))

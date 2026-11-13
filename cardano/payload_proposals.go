@@ -270,7 +270,7 @@ func encodeGovProposal(value GovProposal) (any, error) {
 }
 
 func decodeProposalProcedure(data []byte) (ProposalProcedure, error) {
-	value, err := cbor.UnmarshalUnordered(data)
+	value, err := cbor.UnmarshalLedger(data)
 	if err != nil {
 		return ProposalProcedure{}, err
 	}

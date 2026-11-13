@@ -355,7 +355,7 @@ func decodeTxOut(value any) (TxOut, error) {
 	if !ok {
 		return TxOut{}, errors.New("payload must be a byte string holding a tx_out")
 	}
-	decoded, err := cbor.UnmarshalUnordered(inner)
+	decoded, err := cbor.UnmarshalLedger(inner)
 	if err != nil {
 		return TxOut{}, fmt.Errorf("embedded tx_out: %w", err)
 	}
@@ -535,7 +535,7 @@ func decodeScriptRef(value any) (*TxOutScript, error) {
 	if err != nil {
 		return nil, err
 	}
-	script, err := cbor.UnmarshalUnordered(data)
+	script, err := cbor.UnmarshalLedger(data)
 	if err != nil {
 		return nil, err
 	}
@@ -730,7 +730,7 @@ func encodeScriptRef(value TxOutScript) (any, error) {
 	var body any
 	switch value.Language {
 	case 0:
-		native, err := cbor.UnmarshalUnordered(value.Script)
+		native, err := cbor.UnmarshalLedger(value.Script)
 		if err != nil {
 			return nil, fmt.Errorf("native script: %w", err)
 		}

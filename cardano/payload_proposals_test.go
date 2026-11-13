@@ -471,3 +471,105 @@ func TestTxOutKeepsInlineDatumBytesOpaque(t *testing.T) {
 		t.Fatalf("EncodeTxOut(empty inline datum) error = %v, want ErrPayload", err)
 	}
 }
+
+// indefinite builds an indefinite-length array (0x9f) or map (0xbf) from
+// already-encoded items. The ledger serializer emits these for every list,
+// set and map with more than 23 elements (lengthThreshold in
+// cardano-ledger-binary's Encoder.hs), so OnChain payloads contain them.
+func indefinite(header byte, items ...[]byte) []byte {
+	result := []byte{header}
+	for _, item := range items {
+		result = append(result, item...)
+	}
+	return append(result, 0xff)
+}
+
+func TestTxOutAcceptsLedgerIndefiniteLengths(t *testing.T) {
+	t.Parallel()
+	var assets [][]byte
+	for i := range 24 {
+		assets = append(assets, marshalOrFatal(t, []byte{byte(i)}), []byte{0x01})
+	}
+	inner := marshalOrFatalUnsorted(t, 0x82,
+		marshalOrFatal(t, seq(1, 29)),
+		marshalOrFatalUnsorted(t, 0x82, []byte{0x01},
+			indefinite(0xbf, marshalOrFatal(t, seq(0, 28)), indefinite(0xbf, assets...))))
+	data := marshalOrFatal(t, inner)
+	decoded, err := cardano.DecodeTxOut(data)
+	if err != nil {
+		t.Fatalf("DecodeTxOut(24 assets, ledger encoding) error = %v", err)
+	}
+	if got := len((*decoded.Value.Assets)[0].Assets); got != 24 {
+		t.Fatalf("assets = %d, want 24", got)
+	}
+	if !bytes.Equal(decoded.Raw, inner) {
+		t.Fatalf("Raw = %x, want %x", decoded.Raw, inner)
+	}
+	again, err := cardano.EncodeTxOut(decoded)
+	if err != nil || !bytes.Equal(again, data) {
+		t.Fatalf("re-encode = %x (%v), want %x", again, err, data)
+	}
+
+	var scripts [][]byte
+	for i := range 24 {
+		scripts = append(scripts, marshalOrFatal(t, cbor.Array{uint64(0), seq(byte(i), 28)}))
+	}
+	native := marshalOrFatalUnsorted(t, 0x82, []byte{0x01}, indefinite(0x9f, scripts...))
+	scriptRef := marshalOrFatalUnsorted(t, 0x82, []byte{0x00}, native)
+	withScript := marshalOrFatal(t, cbor.Map{
+		{Key: uint64(0), Value: seq(1, 29)},
+		{Key: uint64(1), Value: uint64(1)},
+		{Key: uint64(3), Value: cbor.Tag{Number: 24, Value: scriptRef}},
+	})
+	if _, err := cardano.DecodeTxOut(marshalOrFatal(t, withScript)); err != nil {
+		t.Fatalf("DecodeTxOut(native script with indefinite list) error = %v", err)
+	}
+}
+
+func TestGovProposalAcceptsLedgerIndefiniteLengths(t *testing.T) {
+	t.Parallel()
+	var costs [][]byte
+	for i := range 24 {
+		costs = append(costs, marshalOrFatal(t, uint64(i)))
+	}
+	update := marshalOrFatalUnsorted(t, 0xa1, []byte{0x12},
+		marshalOrFatalUnsorted(t, 0xa1, []byte{0x02}, indefinite(0x9f, costs...)))
+	action := marshalOrFatalUnsorted(t, 0x84, []byte{0x00}, []byte{0xf6}, update, []byte{0xf6})
+	procedure := marshalOrFatalUnsorted(t, 0x84,
+		marshalOrFatal(t, uint64(5)),
+		marshalOrFatal(t, rewardAccount(0xe0)),
+		action,
+		marshalOrFatal(t, cbor.Array{"u", []byte{1}}),
+	)
+	data := proposalWithProcedure(t, procedure)
+	decoded, err := cardano.DecodeGovProposal(data)
+	if err != nil {
+		t.Fatalf("DecodeGovProposal(24-entry cost model, ledger encoding) error = %v", err)
+	}
+	if got := len((*decoded.Procedure.Action.ParamUpdate.CostModels)[2]); got != 24 {
+		t.Fatalf("cost model length = %d, want 24", got)
+	}
+	again, err := cardano.EncodeGovProposal(decoded)
+	if err != nil || !bytes.Equal(again, data) {
+		t.Fatalf("re-encode = %x (%v), want %x", again, err, data)
+	}
+
+	var withdrawals [][]byte
+	for i := range 24 {
+		withdrawals = append(withdrawals, marshalOrFatal(t, rewardAccount(byte(i))), []byte{0x01})
+	}
+	treasury := marshalOrFatalUnsorted(t, 0x83, []byte{0x02}, indefinite(0xbf, withdrawals...), []byte{0xf6})
+	procedure = marshalOrFatalUnsorted(t, 0x84,
+		marshalOrFatal(t, uint64(5)),
+		marshalOrFatal(t, rewardAccount(0xe0)),
+		treasury,
+		marshalOrFatal(t, cbor.Array{"u", []byte{1}}),
+	)
+	decoded, err = cardano.DecodeGovProposal(proposalWithProcedure(t, procedure))
+	if err != nil {
+		t.Fatalf("DecodeGovProposal(24 withdrawals, ledger encoding) error = %v", err)
+	}
+	if got := len(decoded.Procedure.Action.Withdrawals); got != 24 {
+		t.Fatalf("withdrawals = %d, want 24", got)
+	}
+}
