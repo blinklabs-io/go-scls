@@ -17,6 +17,8 @@ package scls
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -99,10 +101,87 @@ func TestChunkHash(t *testing.T) {
 
 func TestChunkUnsupportedFormat(t *testing.T) {
 	c := testChunk()
-	c.Format = ChunkFormatZstd
+	c.Format = 0xff
 	if _, err := encodeChunk(c); !errors.Is(err, ErrUnsupportedChunkFormat) {
 		t.Fatalf("encode: want ErrUnsupportedChunkFormat, got %v", err)
 	}
+}
+
+func TestChunkCompressedFormatsRoundTrip(t *testing.T) {
+	t.Parallel()
+	want := testChunk()
+	wantHash := want.ComputeHash()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		format := format
+		t.Run(fmt.Sprintf("0x%02x", format), func(t *testing.T) {
+			in := *want
+			in.Format = format
+			payload, err := encodeChunk(&in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := decodeChunk(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got.Entries, want.Entries) {
+				t.Fatalf("entries differ: %#v", got.Entries)
+			}
+			if got.ComputeHash() != wantHash {
+				t.Fatal("compression changed chunk hash")
+			}
+		})
+	}
+}
+
+func TestChunkCompressedFormatsRejectTruncation(t *testing.T) {
+	t.Parallel()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		payload, err := encodeChunk(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		footer := bytes.Clone(payload[len(payload)-chunkFooterSize:])
+		bad := append(bytes.Clone(payload[:len(payload)-chunkFooterSize-1]), footer...)
+		if _, err := decodeChunk(bad); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x: want ErrCompressedChunk, got %v", format, err)
+		}
+		rec := chunkRecord(t, c)
+		rec.payload = bad
+		file := buildRawFile(t, rec, manifestRecord(t, &Manifest{TotalEntries: 2, TotalChunks: 1}))
+		if _, err := Verify(bytes.NewReader(file), VerifyFull); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x Verify: want ErrCompressedChunk, got %v", format, err)
+		}
+	}
+}
+
+func TestChunkCompressedFormatsDetectCorruption(t *testing.T) {
+	t.Parallel()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		rec := chunkRecord(t, c)
+		rec.payload[len(rec.payload)-chunkFooterSize-1] ^= 0x40
+		file := buildRawFile(t, rec, manifestRecord(t, &Manifest{TotalEntries: 2, TotalChunks: 1}))
+		if _, err := Verify(bytes.NewReader(file), VerifyFull); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x: want ErrCompressedChunk, got %v", format, err)
+		}
+	}
+}
+
+func FuzzCompressedChunk(f *testing.F) {
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		payload, err := encodeChunk(c)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(payload)
+	}
+	f.Fuzz(func(t *testing.T, payload []byte) { _, _ = decodeChunk(payload) })
 }
 
 func TestChunkInconsistentKeyLength(t *testing.T) {

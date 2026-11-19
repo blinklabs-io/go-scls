@@ -26,9 +26,13 @@ const benchEntries = 10_000
 
 // benchFile writes benchEntries 32-byte-key/64-byte-value entries.
 func benchFile(b *testing.B) []byte {
+	return benchFileFormat(b, ChunkFormatRaw)
+}
+
+func benchFileFormat(b *testing.B, format byte) []byte {
 	b.Helper()
 	var buf bytes.Buffer
-	w, err := NewWriter(&buf)
+	w, err := NewWriter(&buf, WithChunkFormat(format))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -44,6 +48,67 @@ func benchFile(b *testing.B) []byte {
 		b.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func BenchmarkChunkFormats(b *testing.B) {
+	rawBytes := int64(benchEntries * (4 + 32 + 64))
+	for _, tc := range []struct {
+		name   string
+		format byte
+	}{
+		{"raw", ChunkFormatRaw}, {"zstd", ChunkFormatZstd}, {"zstde", ChunkFormatZstdEntries},
+	} {
+		data := benchFileFormat(b, tc.format)
+		b.Run(tc.name+"/write", func(b *testing.B) {
+			key := make([]byte, 32)
+			value := bytes.Repeat([]byte{0xab}, 64)
+			for b.Loop() {
+				w, err := NewWriter(io.Discard, WithChunkFormat(tc.format))
+				if err != nil {
+					b.Fatal(err)
+				}
+				for i := range benchEntries {
+					binary.BigEndian.PutUint64(key, uint64(i))
+					if err := w.AddEntry("utxo/v0", key, value); err != nil {
+						b.Fatal(err)
+					}
+				}
+				if _, err := w.Close(1); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(tc.name+"/read", func(b *testing.B) {
+			for b.Loop() {
+				r, err := NewReader(bytes.NewReader(data))
+				if err != nil {
+					b.Fatal(err)
+				}
+				for {
+					_, err = r.Next()
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+			b.ReportMetric(float64(len(data))/float64(rawBytes), "stored/raw")
+		})
+		b.Run(tc.name+"/get", func(b *testing.B) {
+			s, err := Open(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				b.Fatal(err)
+			}
+			key := benchKey(benchEntries / 2)
+			for b.Loop() {
+				if _, err := s.Get("utxo/v0", key); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func BenchmarkWriter(b *testing.B) {

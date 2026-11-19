@@ -145,7 +145,7 @@ func TestOpenChunkHeaderFallback(t *testing.T) {
 func TestOpenRejectsUnsupportedChunkFormat(t *testing.T) {
 	rec := chunkRecord(t, singleEntryChunk("a", 0, 0x01))
 	rec.payload = append([]byte(nil), rec.payload...)
-	rec.payload[8] = ChunkFormatZstd
+	rec.payload[8] = 0xff
 	file := buildRawFile(t,
 		rec,
 		manifestRecord(t, &Manifest{

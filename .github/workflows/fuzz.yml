@@ -22,6 +22,7 @@ jobs:
           - {package: ".", fuzz: "FuzzProofRoundtrip$"}
           - {package: ".", fuzz: "FuzzSnapshot$"}
           - {package: ".", fuzz: "FuzzVerifyProof$"}
+          - {package: ".", fuzz: "FuzzCompressedChunk$"}
           - {package: "./cardano/cbor", fuzz: "FuzzValidate$"}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 https://github.com/actions/checkout/releases/tag/v7.0.1

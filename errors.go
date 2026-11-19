@@ -21,6 +21,7 @@ var (
 	ErrInvalidHeader          = errors.New("scls: invalid header record")
 	ErrUnsupportedVersion     = errors.New("scls: unsupported format version")
 	ErrUnsupportedChunkFormat = errors.New("scls: unsupported chunk format")
+	ErrCompressedChunk        = errors.New("scls: invalid compressed chunk")
 	ErrTruncatedRecord        = errors.New("scls: truncated record")
 	ErrTruncatedChunk         = errors.New("scls: truncated chunk payload")
 	ErrTrailingChunkData      = errors.New("scls: trailing bytes in chunk payload")

@@ -13,10 +13,10 @@ Sister implementations: [cardano-cls](https://github.com/tweag/cardano-cls)
 
 ## Status
 
-Early stage (v0.1): SCLS v1 read/write/verify with RAW chunks. Single-entry
-random-access lookup (`Open`/`Get`) and Merkle inclusion proofs
+Early stage (v0.1): SCLS v1 read/write/verify with RAW, ZSTD, and ZSTDE chunks.
+Single-entry random-access lookup (`Open`/`Get`) and Merkle inclusion proofs
 (`Prove`/`VerifyProof`, plus streaming `Lookup`/`LookupProof`) are supported.
-Not yet supported: zstd chunk compression, DELTA/INDEX/BLOOM records, appended
+Not yet supported: DELTA/INDEX/BLOOM records, appended
 multi-manifest files, namespace payload schemas.
 
 Wire-format decisions are documented against the CIP-0165 spec and both
@@ -36,6 +36,10 @@ documented in [VERSIONING.md](VERSIONING.md).
 	// values are caller-encoded canonical CBOR
 	_ = w.AddEntry("utxo/v0", key, valueCbor)
 	root, _ := w.Close(slotNo)
+
+Use `WithChunkFormat(ChunkFormatZstd)` for seekable whole-chunk compression or
+`WithChunkFormat(ChunkFormatZstdEntries)` for independently compressed values.
+`WithZstdLevel` selects the zstd level; RAW remains the default.
 
 ### Reading
 

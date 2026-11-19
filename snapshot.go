@@ -102,7 +102,25 @@ func Open(r io.ReaderAt, size int64) (*Snapshot, error) {
 		}
 		switch recType {
 		case RecordTypeChunk:
-			ns, firstKey, ok, err := parseChunkHeader(body)
+			var ns string
+			var firstKey []byte
+			var ok bool
+			if len(body) > 9 && body[9] == ChunkFormatZstd {
+				_, payload, _, ferr := s.readRecordAt(off)
+				if ferr != nil {
+					return nil, ferr
+				}
+				chunk, ferr := decodeChunk(payload)
+				if ferr != nil {
+					return nil, ferr
+				}
+				ns, ok = chunk.Namespace, true
+				if len(chunk.Entries) > 0 {
+					firstKey = bytes.Clone(chunk.Entries[0].Key)
+				}
+			} else {
+				ns, firstKey, ok, err = parseChunkHeader(body)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -209,7 +227,7 @@ func parseChunkHeader(body []byte) (ns string, firstKey []byte, ok bool, err err
 	if len(p) < 8+1+4 {
 		return "", nil, false, nil
 	}
-	if p[8] != ChunkFormatRaw {
+	if p[8] != ChunkFormatRaw && p[8] != ChunkFormatZstdEntries {
 		return "", nil, false, fmt.Errorf("%w: 0x%02x", ErrUnsupportedChunkFormat, p[8])
 	}
 	lenNS := int64(binary.BigEndian.Uint32(p[9:13]))

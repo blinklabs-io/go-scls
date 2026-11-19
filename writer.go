@@ -32,6 +32,23 @@ const (
 // WriterOption configures a Writer.
 type WriterOption func(*Writer)
 
+// WithChunkFormat selects the encoding used for CHUNK entry data. RAW is the
+// default. Unsupported values make NewWriter return ErrUnsupportedChunkFormat.
+func WithChunkFormat(format byte) WriterOption {
+	return func(w *Writer) {
+		if format > ChunkFormatZstdEntries {
+			w.configErr = fmt.Errorf("%w: 0x%02x", ErrUnsupportedChunkFormat, format)
+			return
+		}
+		w.chunkFormat = format
+	}
+}
+
+// WithZstdLevel selects the zstd compression level for compressed chunks.
+func WithZstdLevel(level int) WriterOption {
+	return func(w *Writer) { w.zstdLevel = level }
+}
+
 // WithMaxChunkEntries sets how many entries are grouped per CHUNK record.
 func WithMaxChunkEntries(n int) WriterOption {
 	return func(w *Writer) {
@@ -66,6 +83,9 @@ type Writer struct {
 	maxChunkEntries int
 	maxChunkBytes   int
 	summary         ManifestSummary
+	chunkFormat     byte
+	zstdLevel       int
+	configErr       error
 
 	chunkSeq     uint64 // per-namespace, reset on namespace change (RECONCILIATION #9)
 	totalEntries uint64
@@ -93,9 +113,13 @@ func NewWriter(w io.Writer, opts ...WriterOption) (*Writer, error) {
 		maxChunkEntries: defaultMaxChunkEntries,
 		maxChunkBytes:   defaultMaxChunkBytes,
 		summary:         ManifestSummary{Tool: "go-scls"},
+		chunkFormat:     ChunkFormatRaw,
 	}
 	for _, opt := range opts {
 		opt(sw)
+	}
+	if sw.configErr != nil {
+		return nil, sw.configErr
 	}
 	hdr := &Header{Version: FormatVersion}
 	if err := writeRecord(w, RecordTypeHdr, hdr.encode()); err != nil {
@@ -175,12 +199,18 @@ func (sw *Writer) flushChunk() error {
 	}
 	c := &Chunk{
 		Seq:       sw.chunkSeq,
-		Format:    ChunkFormatRaw,
+		Format:    sw.chunkFormat,
 		Namespace: sw.curNamespace,
 		KeyLen:    uint32(sw.keyLen), //nolint:gosec // key length bounded by maxRecordSize
 		Entries:   sw.pending,
 	}
-	payload, err := encodeChunk(c)
+	var payload []byte
+	var err error
+	if sw.zstdLevel == 0 {
+		payload, err = encodeChunk(c)
+	} else {
+		payload, err = encodeChunkLevel(c, sw.zstdLevel)
+	}
 	if err != nil {
 		return err
 	}
