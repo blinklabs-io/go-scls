@@ -96,6 +96,13 @@ func BenchmarkChunkFormats(b *testing.B) {
 			}
 			b.ReportMetric(float64(len(data))/float64(rawBytes), "stored/raw")
 		})
+		b.Run(tc.name+"/open", func(b *testing.B) {
+			for b.Loop() {
+				if _, err := Open(bytes.NewReader(data), int64(len(data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run(tc.name+"/get", func(b *testing.B) {
 			s, err := Open(bytes.NewReader(data), int64(len(data)))
 			if err != nil {

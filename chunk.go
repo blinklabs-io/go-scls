@@ -108,11 +108,18 @@ func encodeChunkLevel(c *Chunk, level int) ([]byte, error) {
 		}
 		defer valueEncoder.Close()
 	}
+	decodedEntriesLen := 0
 	for i, e := range c.Entries {
 		if uint32(len(e.Key)) != c.KeyLen { //nolint:gosec // key length validated by Writer
 			return nil, fmt.Errorf("%w: entry %d key length %d != %d",
 				ErrKeyLength, i, len(e.Key), c.KeyLen)
 		}
+		if len(e.Key) > maxRecordSize-4 || len(e.Value) > maxRecordSize-4-len(e.Key) ||
+			decodedEntriesLen > maxRecordSize-4-len(e.Key)-len(e.Value) {
+			return nil, fmt.Errorf("%w: decoded chunk entries exceed %d bytes",
+				ErrRecordTooLarge, maxRecordSize)
+		}
+		decodedEntriesLen += 4 + len(e.Key) + len(e.Value)
 		encoded := encodeEntry(e)
 		if c.Format == ChunkFormatZstdEntries {
 			compressed := valueEncoder.EncodeAll(e.Value, nil)
@@ -242,6 +249,9 @@ func decompressSeekable(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateSeekableFrames(r, uint64(len(data))); err != nil {
+		return nil, err
+	}
 	out, err := io.ReadAll(io.LimitReader(r, maxRecordSize+1))
 	if err == nil && len(out) > maxRecordSize {
 		err = ErrRecordTooLarge
@@ -249,7 +259,40 @@ func decompressSeekable(data []byte) ([]byte, error) {
 	return out, err
 }
 
+func validateSeekableFrames(r *seekable.Reader, compressedSize uint64) error {
+	table, err := r.SeekTable()
+	if err != nil {
+		return err
+	}
+	if table.Size() > maxRecordSize {
+		return ErrRecordTooLarge
+	}
+	for i := int64(0); i < table.NumFrames(); i++ {
+		entry, ok := table.EntryByID(i)
+		if !ok {
+			return fmt.Errorf("%w: missing seek-table frame %d", ErrCompressedChunk, i)
+		}
+		if err := validateSeekableFrame(entry, compressedSize); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSeekableFrame(entry seekable.FrameOffsetEntry, compressedSize uint64) error {
+	if entry.CompressedOffset > compressedSize ||
+		uint64(entry.CompressedSize) > compressedSize-entry.CompressedOffset {
+		return fmt.Errorf("%w: seek-table frame %d exceeds compressed data",
+			ErrCompressedChunk, entry.ID)
+	}
+	return nil
+}
+
 func decodeCompressedEntries(data []byte, count, keyLen uint32) ([]Entry, error) {
+	return decodeCompressedEntriesLimit(data, count, keyLen, maxRecordSize)
+}
+
+func decodeCompressedEntriesLimit(data []byte, count, keyLen uint32, maxBytes int) ([]Entry, error) {
 	stored, err := decodeEntries(data, count, keyLen)
 	if err != nil {
 		return nil, err
@@ -262,13 +305,13 @@ func decodeCompressedEntries(data []byte, count, keyLen uint32) ([]Entry, error)
 	total := 0
 	for i := range stored {
 		overhead := 4 + len(stored[i].Key)
-		remaining := maxRecordSize - total - overhead
+		remaining := maxBytes - total - overhead
 		if remaining < 0 {
 			return nil, ErrRecordTooLarge
 		}
 		if err = dec.ResetWithOptions(
 			nil,
-			zstd.WithDecoderMaxMemory(uint64(max(remaining, 1))),
+			zstd.WithDecoderMaxMemory(uint64(max(remaining, zstd.MinWindowSize))),
 		); err != nil {
 			return nil, err
 		}
@@ -277,7 +320,7 @@ func decodeCompressedEntries(data []byte, count, keyLen uint32) ([]Entry, error)
 			return nil, err
 		}
 		total += overhead + len(stored[i].Value)
-		if total > maxRecordSize {
+		if total > maxBytes {
 			return nil, ErrRecordTooLarge
 		}
 	}

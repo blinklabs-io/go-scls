@@ -272,7 +272,20 @@ func TestWriterSeqResetsPerNamespace(t *testing.T) {
 
 func TestWriterCompressedFormatsPreserveFileContract(t *testing.T) {
 	t.Parallel()
-	var wantRoot Hash
+	var raw bytes.Buffer
+	rawWriter, err := NewWriter(&raw, WithMaxChunkEntries(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := byte(1); i <= 4; i++ {
+		if err := rawWriter.AddEntry("utxo/v0", []byte{i}, bytes.Repeat([]byte{i}, 128)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantRoot, err := rawWriter.Close(7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, format := range []byte{ChunkFormatRaw, ChunkFormatZstd, ChunkFormatZstdEntries} {
 		format := format
 		t.Run(fmt.Sprintf("0x%02x", format), func(t *testing.T) {
@@ -290,9 +303,7 @@ func TestWriterCompressedFormatsPreserveFileContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if format == ChunkFormatRaw {
-				wantRoot = root
-			} else if root != wantRoot {
+			if root != wantRoot {
 				t.Fatal("compression changed Merkle root")
 			}
 			if _, err := Verify(bytes.NewReader(buf.Bytes()), VerifyFull); err != nil {

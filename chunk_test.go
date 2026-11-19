@@ -16,9 +16,11 @@ package scls
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -131,6 +133,60 @@ func TestChunkCompressedFormatsRoundTrip(t *testing.T) {
 				t.Fatal("compression changed chunk hash")
 			}
 		})
+	}
+}
+
+func TestChunkCompressedFormatsRejectOversizedDecodedEntries(t *testing.T) {
+	value := bytes.Repeat([]byte{0}, maxRecordSize)
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := &Chunk{
+			Format:    format,
+			Namespace: "a",
+			KeyLen:    1,
+			Entries:   []Entry{{Key: []byte{0}, Value: value}},
+		}
+		if _, err := encodeChunk(c); !errors.Is(err, ErrRecordTooLarge) {
+			t.Fatalf("format 0x%02x: want ErrRecordTooLarge, got %v", format, err)
+		}
+	}
+}
+
+func TestChunkZstdRejectsOutOfRangeSeekFrame(t *testing.T) {
+	c := testChunk()
+	c.Format = ChunkFormatZstd
+	payload, err := encodeChunk(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lenNS := int(binary.BigEndian.Uint32(payload[9:13]))
+	dataStart := chunkHeaderFixedSize + lenNS
+	data := payload[dataStart : len(payload)-chunkFooterSize]
+	seekTable := bytes.LastIndex(data, []byte{0x5e, 0x2a, 0x4d, 0x18})
+	if seekTable < 0 {
+		t.Fatal("seek table not found")
+	}
+	binary.LittleEndian.PutUint32(payload[dataStart+seekTable+8:], uint32(len(data)+1))
+	_, err = decodeChunk(payload)
+	if !errors.Is(err, ErrCompressedChunk) || !strings.Contains(err.Error(), "exceeds compressed data") {
+		t.Fatalf("want bounded seek-table ErrCompressedChunk, got %v", err)
+	}
+}
+
+func TestDecodeCompressedEntriesAllowsSmallRemainingBudget(t *testing.T) {
+	enc, err := newZstdEncoder(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+	first := encodeEntry(Entry{Key: []byte{0}, Value: enc.EncodeAll(bytes.Repeat([]byte{1}, 80), nil)})
+	second := encodeEntry(Entry{Key: []byte{1}, Value: enc.EncodeAll([]byte{2}, nil)})
+	data := append(first, second...)
+	entries, err := decodeCompressedEntriesLimit(data, 2, 1, 91)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || len(entries[0].Value) != 80 || !bytes.Equal(entries[1].Value, []byte{2}) {
+		t.Fatalf("unexpected decoded entries: %#v", entries)
 	}
 }
 
