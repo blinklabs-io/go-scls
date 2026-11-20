@@ -204,13 +204,7 @@ func (sw *Writer) flushChunk() error {
 		KeyLen:    uint32(sw.keyLen), //nolint:gosec // key length bounded by maxRecordSize
 		Entries:   sw.pending,
 	}
-	var payload []byte
-	var err error
-	if sw.zstdLevel == 0 {
-		payload, err = encodeChunk(c)
-	} else {
-		payload, err = encodeChunkLevel(c, sw.zstdLevel)
-	}
+	payload, err := encodeChunkLevel(c, sw.zstdLevel)
 	if err != nil {
 		return err
 	}

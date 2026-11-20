@@ -339,6 +339,26 @@ func TestWriterCompressedFormatsPreserveFileContract(t *testing.T) {
 			if err != nil || !bytes.Equal(got, bytes.Repeat([]byte{3}, 128)) {
 				t.Fatalf("Lookup: %x, %v", got, err)
 			}
+			for _, lookup := range []struct {
+				name  string
+				prove func() ([]byte, Proof, error)
+			}{
+				{"Prove", func() ([]byte, Proof, error) {
+					return s.Prove("utxo/v0", []byte{3})
+				}},
+				{"LookupProof", func() ([]byte, Proof, error) {
+					return LookupProof(bytes.NewReader(buf.Bytes()), "utxo/v0", []byte{3})
+				}},
+			} {
+				value, proof, err := lookup.prove()
+				if err != nil || !bytes.Equal(value, bytes.Repeat([]byte{3}, 128)) {
+					t.Fatalf("%s: %x, %v", lookup.name, value, err)
+				}
+				if err := VerifyProof(wantRoot, "utxo/v0", []byte{3}, value, proof); err != nil {
+					t.Fatalf("%s proof: %v", lookup.name, err)
+				}
+			}
+
 		})
 	}
 }
