@@ -362,3 +362,30 @@ func TestWriterCompressedFormatsPreserveFileContract(t *testing.T) {
 		})
 	}
 }
+
+func TestWriterZstdEntriesAtDecodedSizeLimit(t *testing.T) {
+	var buf bytes.Buffer
+	w, err := NewWriter(&buf, WithChunkFormat(ChunkFormatZstdEntries), WithMaxChunkBytes(maxRecordSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const entryOverhead = 4 + 1
+	tail := bytes.Repeat([]byte{1}, 1024)
+	if err := w.AddEntry("utxo/v0", []byte{0}, make([]byte, maxRecordSize-2*entryOverhead-len(tail))); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AddEntry("utxo/v0", []byte{1}, tail); err != nil {
+		t.Fatal(err)
+	}
+	root, err := w.Close(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Verify(bytes.NewReader(buf.Bytes()), VerifyFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TotalEntries != 2 || result.TotalChunks != 1 || result.RootHash != root {
+		t.Fatalf("unexpected verified file: %+v", result)
+	}
+}

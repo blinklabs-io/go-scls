@@ -305,9 +305,10 @@ func decodeCompressedEntriesLimit(data []byte, count, keyLen uint32, maxBytes in
 		if remaining < 0 {
 			return nil, ErrRecordTooLarge
 		}
+		// A frame's window can exceed its decoded value and remaining budget.
 		if err = dec.ResetWithOptions(
 			nil,
-			zstd.WithDecoderMaxMemory(uint64(max(remaining, zstd.MinWindowSize))),
+			zstd.WithDecoderMaxMemory(maxRecordSize),
 		); err != nil {
 			return nil, err
 		}

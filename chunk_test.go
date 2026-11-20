@@ -264,3 +264,26 @@ func TestChunkCorruptedEntryDetectedByHash(t *testing.T) {
 		t.Fatal("corruption not detected by chunk hash")
 	}
 }
+
+func TestCompressedEntryWindowAndOutputBudgets(t *testing.T) {
+	enc, err := newZstdEncoder(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+	value := bytes.Repeat([]byte{2}, 1024)
+	data := encodeEntry(Entry{Key: []byte{0}, Value: enc.EncodeAll(value, nil)})
+	limit := 4 + 1 + len(value)
+	for _, budget := range []int{limit - 1, limit, limit + 1} {
+		entries, err := decodeCompressedEntriesLimit(data, 1, 1, budget)
+		if budget < limit {
+			if !errors.Is(err, ErrRecordTooLarge) {
+				t.Fatalf("budget %d: want ErrRecordTooLarge, got %v", budget, err)
+			}
+			continue
+		}
+		if err != nil || len(entries) != 1 || !bytes.Equal(entries[0].Value, value) {
+			t.Fatalf("budget %d: valid compressed entry rejected: %v", budget, err)
+		}
+	}
+}
