@@ -76,13 +76,9 @@ const zstdSeekFrameSize = 1 << 20
 // excluding the variable-length namespace bytes.
 const chunkHeaderFixedSize = 8 + 1 + 4 + 4
 
-// encodeChunk encodes a CHUNK payload (RECONCILIATION #3/#6/#10):
+// encodeChunkLevel encodes a CHUNK payload (RECONCILIATION #3/#6/#10):
 // seq(u64 BE) || format(u8) || len_ns(u32 BE) || ns || len_key(u32 BE) ||
 // entries || entries_count(u32 BE) || chunk_hash(28).
-func encodeChunk(c *Chunk) ([]byte, error) {
-	return encodeChunkLevel(c, 0)
-}
-
 func encodeChunkLevel(c *Chunk, level int) ([]byte, error) {
 	if c.Format > ChunkFormatZstdEntries {
 		return nil, fmt.Errorf("%w: 0x%02x", ErrUnsupportedChunkFormat, c.Format)
