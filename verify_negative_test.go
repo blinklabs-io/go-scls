@@ -44,7 +44,7 @@ func buildRawFile(t *testing.T, recs ...rawRecord) []byte {
 
 func chunkRecord(t *testing.T, c *Chunk) rawRecord {
 	t.Helper()
-	payload, err := encodeChunk(c)
+	payload, err := encodeChunkLevel(c, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

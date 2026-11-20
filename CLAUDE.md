@@ -7,12 +7,12 @@ and workflow rules.
 
 | Metric | Value |
 |--------|-------|
-| Format version | SCLS v1 (CIP-0165), RAW chunks only |
-| Test functions | 65+ (100% passing), 4 godoc examples, 7 benchmarks |
-| Fuzz targets | 6 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`, `FuzzValidate`), all six in the nightly `fuzz.yml` matrix |
+| Format version | SCLS v1 (CIP-0165), RAW, ZSTD, and ZSTDE chunks |
+| Test functions | 65+ (100% passing), 4 godoc examples, 8 benchmarks |
+| Fuzz targets | 7 (`FuzzVerify`, `FuzzRoundTrip`, `FuzzSnapshot`, `FuzzVerifyProof`, `FuzzProofRoundtrip`, `FuzzCompressedChunk`, `FuzzValidate`), all seven in the nightly `fuzz.yml` matrix |
 | Conformance fixtures | 5: Haskell-gen `minimal-raw.scls` + 4 Rust-gen (`empty`, `multi-ns`, `multi-chunk`, `multi-ns-multi-chunk`); all pass VerifyFull, roots/digests pinned in `TestConformanceGolden` |
 | Proofs / lookup | `Open`/`Get` random-access, `Prove`/`VerifyProof` Merkle proofs, streaming `Lookup`/`LookupProof`; portable proofs via `Proof.MarshalBinary`/`UnmarshalProofBinary` |
-| Direct dependencies | `golang.org/x/crypto` only |
+| Direct dependencies | `golang.org/x/crypto`, `klauspost/compress`, and `zstd-seekable-format-go` |
 | Go floor | 1.25 (CI matrix 1.25.x/1.26.x) |
 | CLI | `scls` cobra binary in nested `cmd/scls` module: verify/info/ls/get/proof/diff/version, text + `--json` |
 | Distribution | release binaries + Docker (`blinklabs/scls`, `ghcr.io/blinklabs-io/go-scls`), SLSA attestations |

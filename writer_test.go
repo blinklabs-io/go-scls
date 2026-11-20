@@ -17,6 +17,7 @@ package scls
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -35,6 +36,16 @@ func TestWriterEmptyFile(t *testing.T) {
 	}
 	if buf.Len() == 0 {
 		t.Fatal("no bytes written")
+	}
+}
+
+func TestWriterRejectsUnsupportedChunkFormat(t *testing.T) {
+	var buf bytes.Buffer
+	if _, err := NewWriter(&buf, WithChunkFormat(0xff)); !errors.Is(err, ErrUnsupportedChunkFormat) {
+		t.Fatalf("want ErrUnsupportedChunkFormat, got %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatal("invalid configuration wrote a header")
 	}
 }
 
@@ -256,5 +267,125 @@ func TestWriterSeqResetsPerNamespace(t *testing.T) {
 	}
 	if len(seqs) != 3 || seqs[0] != 0 || seqs[1] != 1 || seqs[2] != 0 {
 		t.Fatalf("seqs %v, want [0 1 0]", seqs)
+	}
+}
+
+func TestWriterCompressedFormatsPreserveFileContract(t *testing.T) {
+	t.Parallel()
+	var raw bytes.Buffer
+	rawWriter, err := NewWriter(&raw, WithMaxChunkEntries(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := byte(1); i <= 4; i++ {
+		if err := rawWriter.AddEntry("utxo/v0", []byte{i}, bytes.Repeat([]byte{i}, 128)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantRoot, err := rawWriter.Close(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []byte{ChunkFormatRaw, ChunkFormatZstd, ChunkFormatZstdEntries} {
+		format := format
+		t.Run(fmt.Sprintf("0x%02x", format), func(t *testing.T) {
+			var buf bytes.Buffer
+			w, err := NewWriter(&buf, WithChunkFormat(format), WithZstdLevel(3), WithMaxChunkEntries(2))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := byte(1); i <= 4; i++ {
+				if err := w.AddEntry("utxo/v0", []byte{i}, bytes.Repeat([]byte{i}, 128)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			root, err := w.Close(7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if root != wantRoot {
+				t.Fatal("compression changed Merkle root")
+			}
+			if _, err := Verify(bytes.NewReader(buf.Bytes()), VerifyFull); err != nil {
+				t.Fatal(err)
+			}
+			r := bytes.NewReader(buf.Bytes())
+			for {
+				recordType, payload, readErr := readRecord(r)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				if recordType != RecordTypeChunk {
+					continue
+				}
+				chunk, decodeErr := decodeChunk(payload)
+				if decodeErr != nil {
+					t.Fatal(decodeErr)
+				}
+				if chunk.Format != format {
+					t.Fatalf("chunk format 0x%02x, want 0x%02x", chunk.Format, format)
+				}
+				break
+			}
+			s, err := Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Get("utxo/v0", []byte{3})
+			if err != nil || !bytes.Equal(got, bytes.Repeat([]byte{3}, 128)) {
+				t.Fatalf("Get: %x, %v", got, err)
+			}
+			got, err = Lookup(bytes.NewReader(buf.Bytes()), "utxo/v0", []byte{3})
+			if err != nil || !bytes.Equal(got, bytes.Repeat([]byte{3}, 128)) {
+				t.Fatalf("Lookup: %x, %v", got, err)
+			}
+			for _, lookup := range []struct {
+				name  string
+				prove func() ([]byte, Proof, error)
+			}{
+				{"Prove", func() ([]byte, Proof, error) {
+					return s.Prove("utxo/v0", []byte{3})
+				}},
+				{"LookupProof", func() ([]byte, Proof, error) {
+					return LookupProof(bytes.NewReader(buf.Bytes()), "utxo/v0", []byte{3})
+				}},
+			} {
+				value, proof, err := lookup.prove()
+				if err != nil || !bytes.Equal(value, bytes.Repeat([]byte{3}, 128)) {
+					t.Fatalf("%s: %x, %v", lookup.name, value, err)
+				}
+				if err := VerifyProof(wantRoot, "utxo/v0", []byte{3}, value, proof); err != nil {
+					t.Fatalf("%s proof: %v", lookup.name, err)
+				}
+			}
+
+		})
+	}
+}
+
+func TestWriterZstdEntriesAtDecodedSizeLimit(t *testing.T) {
+	var buf bytes.Buffer
+	w, err := NewWriter(&buf, WithChunkFormat(ChunkFormatZstdEntries), WithMaxChunkBytes(maxRecordSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const entryOverhead = 4 + 1
+	tail := bytes.Repeat([]byte{1}, 1024)
+	if err := w.AddEntry("utxo/v0", []byte{0}, make([]byte, maxRecordSize-2*entryOverhead-len(tail))); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AddEntry("utxo/v0", []byte{1}, tail); err != nil {
+		t.Fatal(err)
+	}
+	root, err := w.Close(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Verify(bytes.NewReader(buf.Bytes()), VerifyFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TotalEntries != 2 || result.TotalChunks != 1 || result.RootHash != root {
+		t.Fatalf("unexpected verified file: %+v", result)
 	}
 }

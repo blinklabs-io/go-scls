@@ -20,6 +20,9 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"unicode/utf8"
+
+	seekable "github.com/SaveTheRbtz/zstd-seekable-format-go/pkg"
 )
 
 // chunkHeaderProbe bounds the prefix of a CHUNK record read at Open to extract
@@ -102,7 +105,15 @@ func Open(r io.ReaderAt, size int64) (*Snapshot, error) {
 		}
 		switch recType {
 		case RecordTypeChunk:
-			ns, firstKey, ok, err := parseChunkHeader(body)
+			var ns string
+			var firstKey []byte
+			var ok bool
+			if len(body) > 9 && body[9] == ChunkFormatZstd {
+				ns, firstKey, err = s.parseZstdChunkIndex(off, consumed, body)
+				ok = err == nil
+			} else {
+				ns, firstKey, ok, err = parseChunkHeader(body)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -154,6 +165,65 @@ func Open(r io.ReaderAt, size int64) (*Snapshot, error) {
 		s.ranges[c.namespace] = rng
 	}
 	return s, nil
+}
+
+func (s *Snapshot) parseZstdChunkIndex(off, consumed int64, body []byte) (string, []byte, error) {
+	if len(body) < 14 || body[0] != RecordTypeChunk || body[9] != ChunkFormatZstd {
+		return "", nil, ErrTruncatedChunk
+	}
+	lenNS := int64(binary.BigEndian.Uint32(body[10:14]))
+	headerLen := int64(1+chunkHeaderFixedSize) + lenNS
+	bodyLen := consumed - 4
+	if lenNS > bodyLen-int64(1+chunkHeaderFixedSize+chunkFooterSize) {
+		return "", nil, ErrTruncatedChunk
+	}
+	if headerLen > int64(len(body)) {
+		body = make([]byte, headerLen)
+		if _, err := s.r.ReadAt(body, off+4); err != nil {
+			return "", nil, fmt.Errorf("%w: chunk header at %d: %w", ErrTruncatedChunk, off, err)
+		}
+	}
+	nsBytes := body[14 : 14+lenNS]
+	if !utf8.Valid(nsBytes) {
+		return "", nil, fmt.Errorf("%w: namespace not valid UTF-8", ErrTruncatedChunk)
+	}
+	keyLen := uint64(binary.BigEndian.Uint32(body[14+lenNS : headerLen]))
+	compressedLen := bodyLen - headerLen - chunkFooterSize
+	if compressedLen < 0 {
+		return "", nil, ErrTruncatedChunk
+	}
+	var countBuf [4]byte
+	if _, err := s.r.ReadAt(countBuf[:], off+consumed-chunkFooterSize); err != nil {
+		return "", nil, fmt.Errorf("%w: chunk footer at %d: %w", ErrTruncatedChunk, off, err)
+	}
+	if binary.BigEndian.Uint32(countBuf[:]) == 0 {
+		return string(nsBytes), nil, nil
+	}
+	dec, err := newZstdDecoder()
+	if err != nil {
+		return "", nil, err
+	}
+	defer dec.Close()
+	compressed := io.NewSectionReader(s.r, off+4+headerLen, compressedLen)
+	r, err := seekable.NewReader(compressed, dec)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: %w", ErrCompressedChunk, err)
+	}
+	defer r.Close()
+	if err := validateSeekableFrames(r, uint64(compressedLen)); err != nil {
+		return "", nil, err
+	}
+	if keyLen > maxRecordSize-4 {
+		return "", nil, ErrRecordTooLarge
+	}
+	prefix := make([]byte, 4+keyLen)
+	if _, err := io.ReadFull(r, prefix); err != nil {
+		return "", nil, fmt.Errorf("%w: first compressed entry: %w", ErrCompressedChunk, err)
+	}
+	if uint64(binary.BigEndian.Uint32(prefix[:4])) < keyLen {
+		return "", nil, fmt.Errorf("%w: first entry shorter than key", ErrTruncatedChunk)
+	}
+	return string(nsBytes), prefix[4:], nil
 }
 
 // readRecordAt reads the full record at off and returns its type, payload, and
@@ -209,7 +279,7 @@ func parseChunkHeader(body []byte) (ns string, firstKey []byte, ok bool, err err
 	if len(p) < 8+1+4 {
 		return "", nil, false, nil
 	}
-	if p[8] != ChunkFormatRaw {
+	if p[8] != ChunkFormatRaw && p[8] != ChunkFormatZstdEntries {
 		return "", nil, false, fmt.Errorf("%w: 0x%02x", ErrUnsupportedChunkFormat, p[8])
 	}
 	lenNS := int64(binary.BigEndian.Uint32(p[9:13]))

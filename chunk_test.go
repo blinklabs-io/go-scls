@@ -16,7 +16,11 @@ package scls
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +39,7 @@ func testChunk() *Chunk {
 
 func TestChunkRoundTrip(t *testing.T) {
 	in := testChunk()
-	payload, err := encodeChunk(in)
+	payload, err := encodeChunkLevel(in, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +62,7 @@ func TestChunkRoundTrip(t *testing.T) {
 // seq u64 || format u8 || len_ns u32 || ns || len_key u32 || entries || count u32 || digest
 func TestChunkWireLayout(t *testing.T) {
 	c := testChunk()
-	payload, err := encodeChunk(c)
+	payload, err := encodeChunkLevel(c, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +88,7 @@ func TestChunkHash(t *testing.T) {
 	if got := c.ComputeHash(); got != expected {
 		t.Fatalf("got %x, want %x", got, expected)
 	}
-	payload, err := encodeChunk(c)
+	payload, err := encodeChunkLevel(c, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,22 +103,153 @@ func TestChunkHash(t *testing.T) {
 
 func TestChunkUnsupportedFormat(t *testing.T) {
 	c := testChunk()
-	c.Format = ChunkFormatZstd
-	if _, err := encodeChunk(c); !errors.Is(err, ErrUnsupportedChunkFormat) {
+	c.Format = 0xff
+	if _, err := encodeChunkLevel(c, 0); !errors.Is(err, ErrUnsupportedChunkFormat) {
 		t.Fatalf("encode: want ErrUnsupportedChunkFormat, got %v", err)
 	}
+}
+
+func TestChunkCompressedFormatsRoundTrip(t *testing.T) {
+	t.Parallel()
+	want := testChunk()
+	wantHash := want.ComputeHash()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		format := format
+		t.Run(fmt.Sprintf("0x%02x", format), func(t *testing.T) {
+			in := *want
+			in.Format = format
+			payload, err := encodeChunkLevel(&in, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := decodeChunk(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got.Entries, want.Entries) {
+				t.Fatalf("entries differ: %#v", got.Entries)
+			}
+			if got.ComputeHash() != wantHash {
+				t.Fatal("compression changed chunk hash")
+			}
+		})
+	}
+}
+
+func TestChunkCompressedFormatsRejectOversizedDecodedEntries(t *testing.T) {
+	value := bytes.Repeat([]byte{0}, maxRecordSize)
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := &Chunk{
+			Format:    format,
+			Namespace: "a",
+			KeyLen:    1,
+			Entries:   []Entry{{Key: []byte{0}, Value: value}},
+		}
+		if _, err := encodeChunkLevel(c, 0); !errors.Is(err, ErrRecordTooLarge) {
+			t.Fatalf("format 0x%02x: want ErrRecordTooLarge, got %v", format, err)
+		}
+	}
+}
+
+func TestChunkZstdRejectsOutOfRangeSeekFrame(t *testing.T) {
+	c := testChunk()
+	c.Format = ChunkFormatZstd
+	payload, err := encodeChunkLevel(c, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lenNS := int(binary.BigEndian.Uint32(payload[9:13]))
+	dataStart := chunkHeaderFixedSize + lenNS
+	data := payload[dataStart : len(payload)-chunkFooterSize]
+	seekTable := bytes.LastIndex(data, []byte{0x5e, 0x2a, 0x4d, 0x18})
+	if seekTable < 0 {
+		t.Fatal("seek table not found")
+	}
+	binary.LittleEndian.PutUint32(payload[dataStart+seekTable+8:], uint32(len(data)+1))
+	_, err = decodeChunk(payload)
+	if !errors.Is(err, ErrCompressedChunk) || !strings.Contains(err.Error(), "exceeds compressed data") {
+		t.Fatalf("want bounded seek-table ErrCompressedChunk, got %v", err)
+	}
+}
+
+func TestDecodeCompressedEntriesAllowsSmallRemainingBudget(t *testing.T) {
+	enc, err := newZstdEncoder(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+	first := encodeEntry(Entry{Key: []byte{0}, Value: enc.EncodeAll(bytes.Repeat([]byte{1}, 80), nil)})
+	second := encodeEntry(Entry{Key: []byte{1}, Value: enc.EncodeAll([]byte{2}, nil)})
+	data := append(first, second...)
+	entries, err := decodeCompressedEntriesLimit(data, 2, 1, 91)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || len(entries[0].Value) != 80 || !bytes.Equal(entries[1].Value, []byte{2}) {
+		t.Fatalf("unexpected decoded entries: %#v", entries)
+	}
+}
+
+func TestChunkCompressedFormatsRejectTruncation(t *testing.T) {
+	t.Parallel()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		payload, err := encodeChunkLevel(c, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		footer := bytes.Clone(payload[len(payload)-chunkFooterSize:])
+		bad := append(bytes.Clone(payload[:len(payload)-chunkFooterSize-1]), footer...)
+		if _, err := decodeChunk(bad); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x: want ErrCompressedChunk, got %v", format, err)
+		}
+		rec := chunkRecord(t, c)
+		rec.payload = bad
+		file := buildRawFile(t, rec, manifestRecord(t, &Manifest{TotalEntries: 2, TotalChunks: 1}))
+		if _, err := Verify(bytes.NewReader(file), VerifyFull); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x Verify: want ErrCompressedChunk, got %v", format, err)
+		}
+	}
+}
+
+func TestChunkCompressedFormatsDetectCorruption(t *testing.T) {
+	t.Parallel()
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		rec := chunkRecord(t, c)
+		rec.payload[len(rec.payload)-chunkFooterSize-1] ^= 0x40
+		file := buildRawFile(t, rec, manifestRecord(t, &Manifest{TotalEntries: 2, TotalChunks: 1}))
+		if _, err := Verify(bytes.NewReader(file), VerifyFull); !errors.Is(err, ErrCompressedChunk) {
+			t.Fatalf("format 0x%02x: want ErrCompressedChunk, got %v", format, err)
+		}
+	}
+}
+
+func FuzzCompressedChunk(f *testing.F) {
+	for _, format := range []byte{ChunkFormatZstd, ChunkFormatZstdEntries} {
+		c := testChunk()
+		c.Format = format
+		payload, err := encodeChunkLevel(c, 0)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(payload)
+	}
+	f.Fuzz(func(t *testing.T, payload []byte) { _, _ = decodeChunk(payload) })
 }
 
 func TestChunkInconsistentKeyLength(t *testing.T) {
 	c := testChunk()
 	c.KeyLen = 3
-	if _, err := encodeChunk(c); !errors.Is(err, ErrKeyLength) {
+	if _, err := encodeChunkLevel(c, 0); !errors.Is(err, ErrKeyLength) {
 		t.Fatalf("encode: want ErrKeyLength, got %v", err)
 	}
 }
 
 func TestChunkCorruptedEntryDetectedByHash(t *testing.T) {
-	payload, err := encodeChunk(testChunk())
+	payload, err := encodeChunkLevel(testChunk(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,5 +262,28 @@ func TestChunkCorruptedEntryDetectedByHash(t *testing.T) {
 	}
 	if out.ComputeHash() == out.DeclaredHash() {
 		t.Fatal("corruption not detected by chunk hash")
+	}
+}
+
+func TestCompressedEntryWindowAndOutputBudgets(t *testing.T) {
+	enc, err := newZstdEncoder(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+	value := bytes.Repeat([]byte{2}, 1024)
+	data := encodeEntry(Entry{Key: []byte{0}, Value: enc.EncodeAll(value, nil)})
+	limit := 4 + 1 + len(value)
+	for _, budget := range []int{limit - 1, limit, limit + 1} {
+		entries, err := decodeCompressedEntriesLimit(data, 1, 1, budget)
+		if budget < limit {
+			if !errors.Is(err, ErrRecordTooLarge) {
+				t.Fatalf("budget %d: want ErrRecordTooLarge, got %v", budget, err)
+			}
+			continue
+		}
+		if err != nil || len(entries) != 1 || !bytes.Equal(entries[0].Value, value) {
+			t.Fatalf("budget %d: valid compressed entry rejected: %v", budget, err)
+		}
 	}
 }

@@ -80,12 +80,13 @@ documentation: keep them accurate and in `// Name ...` form.
    with sources; code comments reference rows as `VERIFY(#n)` /
    `RECONCILIATION #n`. When the spec or a reference implementation
    contradicts this library, update the table with sources first.
-7. Pure Go, no CGO. Only direct dependency: `golang.org/x/crypto`. Do not
-   add gouroboros (it may depend on this library later; avoid the cycle).
+7. Pure Go, no CGO. Direct dependencies are `golang.org/x/crypto`,
+   `klauspost/compress`, and `zstd-seekable-format-go`. Do not add gouroboros
+   (it may depend on this library later; avoid the cycle).
 
 ## Out of scope for v0.1 (reject, don't implement quietly)
 
-zstd chunk formats (`0x01`/`0x02` → `ErrUnsupportedChunkFormat`), DELTA
+DELTA
 records (`ErrUnexpectedRecord`), multi-manifest/appended files, namespace
 payload schemas.
 

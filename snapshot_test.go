@@ -17,8 +17,21 @@ package scls
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 )
+
+type boundedReadAt struct {
+	r     *bytes.Reader
+	limit int
+}
+
+func (r boundedReadAt) ReadAt(p []byte, off int64) (int, error) {
+	if len(p) > r.limit {
+		return 0, fmt.Errorf("read %d bytes exceeds test limit %d", len(p), r.limit)
+	}
+	return r.r.ReadAt(p, off)
+}
 
 // buildFileBytes builds the same file as buildFile without a *testing.T, for
 // fuzz seeds. It panics on error (only reachable on a programming mistake).
@@ -142,10 +155,40 @@ func TestOpenChunkHeaderFallback(t *testing.T) {
 	}
 }
 
+func TestOpenZstdReadsOnlyIndexPrefix(t *testing.T) {
+	value := make([]byte, 3<<20)
+	var x uint32 = 1
+	for i := range value {
+		x ^= x << 13
+		x ^= x >> 17
+		x ^= x << 5
+		value[i] = byte(x)
+	}
+	var buf bytes.Buffer
+	w, err := NewWriter(&buf, WithChunkFormat(ChunkFormatZstd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AddEntry("a", []byte{0}, value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Close(1); err != nil {
+		t.Fatal(err)
+	}
+	r := boundedReadAt{r: bytes.NewReader(buf.Bytes()), limit: zstdSeekFrameSize + 64<<10}
+	s, err := Open(r, int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Open read more than the first seekable frame: %v", err)
+	}
+	if len(s.chunks) != 1 || !bytes.Equal(s.chunks[0].firstKey, []byte{0}) {
+		t.Fatalf("unexpected index: %+v", s.chunks)
+	}
+}
+
 func TestOpenRejectsUnsupportedChunkFormat(t *testing.T) {
 	rec := chunkRecord(t, singleEntryChunk("a", 0, 0x01))
 	rec.payload = append([]byte(nil), rec.payload...)
-	rec.payload[8] = ChunkFormatZstd
+	rec.payload[8] = 0xff
 	file := buildRawFile(t,
 		rec,
 		manifestRecord(t, &Manifest{
