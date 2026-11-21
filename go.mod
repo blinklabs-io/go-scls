@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.4
 	golang.org/x/crypto v0.59.0
 )
 
